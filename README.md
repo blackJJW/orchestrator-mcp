@@ -1,6 +1,6 @@
 # Orchestrator local controller
 
-A native Go CLI that compares an explicit project profile with a request in dry-run mode. The bootstrap contains the profile loader, pure scope decision, CLI and inert fixtures. This candidate also includes the independently reviewed Notion reader and admission interfaces; the CLI remains dry-run only.
+A native Go CLI that compares an explicit project profile with a request in dry-run mode. The bootstrap contains the profile loader, pure scope decision, CLI and inert fixtures. The Notion reader and admission interfaces retain their independently reviewed behavior. This candidate adds the separately authorized Codex adapter correction; the CLI remains dry-run only.
 
 ## Build and validation
 
@@ -53,9 +53,9 @@ The two fixture profiles point only to inert workspaces owned by this repository
 
 ## Boundaries and source control
 
-`internal/config` owns filesystem validation; `internal/core` returns synchronous pure decisions; `cmd/orchestrator-mcp` handles CLI and JSON I/O. The Notion adapter makes bounded, fixed-host GET requests only when a caller supplies a token; it never reads credential files and its claim method always refuses writes. The CLI does not invoke these adapters. There is no provider executor, daemon, journal, Docker package or MCP server. Workspace comparison is a dry-run check, not a runtime sandbox.
+`internal/config` owns filesystem validation; `internal/core` returns synchronous pure decisions; `cmd/orchestrator-mcp` handles CLI and JSON I/O. The Notion adapter makes bounded, fixed-host GET requests only when a caller supplies a token; it never reads credential files and its claim method always refuses writes. The Codex adapter requires a separate host-issued read-only launch grant; fixtures execute only the test binary. The CLI does not invoke these adapters. There is no daemon, journal, Docker package or MCP server. Workspace comparison is a dry-run check, not a runtime sandbox.
 
-The initial `main` uses the independently accepted bootstrap source. Runtime source, tests, build recipe and fixtures retain their accepted bytes; publication changes are limited to this README, the public contract and ignore rules. Unaccepted adapters are excluded. Later implementation candidates require separate branches and independent review before integration.
+The initial `main` used the independently accepted bootstrap source, followed by the reviewed Notion integration. The Codex corrective candidate is isolated on its review branch. Later implementation candidates require separate branches and independent review before integration. Existing public history is preserved; this candidate does not repair earlier merge metadata.
 
 Before every publication, use an explicit reviewed file allowlist and inspect every staged file and the prospective commit history. Do not bulk-stage a private working directory. Keep local evidence, reports, binaries, caches, credentials, real environment files and personal settings outside Git. Git publication does not grant provider, runtime or acceptance authority.
 
@@ -66,3 +66,11 @@ See [the bootstrap contract](docs/MTT-571.md).
 The [Notion admission contract](docs/MTT-572.md) describes the reader and host-supplied authority checks. Missing, null, duplicate or case-alias schema fields fail closed. Empty dependency relations, permitted null lease dates and optional extensions retain their supported meanings. Admission checks the selected task, project, permission, owner, nonce, lease, dependencies, brief and source before and after a fixture claim. An admitted result still has `execution_started=false` and grants no provider execution or lifecycle acceptance.
 
 Notion tests use the actual reader and `intake.Admit` with a test-local fake consumer. They compile without a Codex adapter. Malformed snapshots produce zero claims, source verifications and fake dispatches. A positive control observes two reader passes, one in-memory claim, two source verifications and one fake consumer delivery; authority and post-claim nonce failures deliver nothing. These fixtures do not establish live authentication, atomic claims, a real source verifier or provider/MCP operation.
+
+## Codex corrective candidate
+
+The [Codex adapter contract](docs/MTT-573.md) preserves fixed argv, stdin-only briefs, native binary pinning, bounded output and deny-first grant checks. Process-wide reservations prevent repeated task/run or task/claim dispatch across Executor instances. Reservations survive completion and failure; context deadlines cannot exceed the grant lease, and expired leases never produce normal completion.
+
+JSONL duplicate keys and typed field aliases fail closed. The versioned CLI stream exposes agent message text without a final-phase discriminator, so the controller requires exactly one response-contract candidate in the last completed agent message. Ordinary progress remains valid; multiple or conflicting candidates are unsupported. A successful result is only `COMPLETED_UNVERIFIED`, never acceptance or DONE.
+
+Historical corrections2/2 remain recorded separately from the newly authorized C1/C2 slice. Fake/race validation and source review do not qualify live authentication, cross-process ownership, atomic Notion claims, real source verification, sandbox or descendant cleanup. No provider job, journal, MCP server or merge is part of this candidate.
