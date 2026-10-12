@@ -394,8 +394,9 @@ func finalStatus(text string) (string, bool) {
 			return "", false
 		}
 		seen[name] = true
-		var value string
-		if d.Decode(&value) != nil {
+		token, err := d.Token()
+		value, ok := token.(string)
+		if err != nil || !ok {
 			return "", false
 		}
 		if name == "status" {
