@@ -1,6 +1,6 @@
 # Orchestrator local controller
 
-A native Go CLI that compares an explicit project profile with a request in dry-run mode. The bootstrap contains the profile loader, pure scope decision, CLI and inert fixtures. The Notion reader and admission interfaces retain their independently reviewed behavior. This candidate adds the separately authorized Codex adapter correction; the CLI remains dry-run only.
+A native Go CLI that compares an explicit project profile with a request in dry-run mode. The bootstrap, Notion admission and Codex adapters retain their independently reviewed behavior. The S2 candidate adds a read-only Git/source/brief/receipt verifier behind the existing admission interface; the CLI remains dry-run only.
 
 ## Build and validation
 
@@ -55,11 +55,17 @@ The two fixture profiles point only to inert workspaces owned by this repository
 
 `internal/config` owns filesystem validation; `internal/core` returns synchronous pure decisions; `cmd/orchestrator-mcp` handles CLI and JSON I/O. The Notion adapter makes bounded, fixed-host GET requests only when a caller supplies a token; it never reads credential files and its claim method always refuses writes. The Codex adapter requires a separate host-issued read-only launch grant; fixtures execute only the test binary. The CLI does not invoke these adapters. There is no daemon, journal, Docker package or MCP server. Workspace comparison is a dry-run check, not a runtime sandbox.
 
-The initial `main` used the independently accepted bootstrap source, followed by the reviewed Notion integration. The Codex corrective candidate is isolated on its review branch. Later implementation candidates require separate branches and independent review before integration. Existing public history is preserved; this candidate does not repair earlier merge metadata.
+The initial `main` used the independently accepted bootstrap source, followed by the reviewed Notion and Codex integrations. The S2 candidate is isolated on its review branch. Later implementation candidates require separate branches and independent review before integration. Existing public history is preserved; this candidate does not repair earlier merge metadata.
 
 Before every publication, use an explicit reviewed file allowlist and inspect every staged file and the prospective commit history. Do not bulk-stage a private working directory. Keep local evidence, reports, binaries, caches, credentials, real environment files and personal settings outside Git. Git publication does not grant provider, runtime or acceptance authority.
 
 See [the bootstrap contract](docs/MTT-571.md).
+
+## S2 source identity verification
+
+The [S2 contract](docs/S2-IDENTITY.md) describes `intake.NewGitSource` and its trusted host inputs. It reads a complete local Git checkout, exact source bytes, immutable brief and pinned canonical/review evidence. Commit, tree and source-set identities stay distinct. Compatible main advancement is limited to unchanged approved behavior inputs; unsupported or missing proof fails closed. The existing admission path repeats verification around its claim; no CLI command, claim writer or provider grant is added.
+
+Canonical/review receipt projections and raw artifacts must be pinned by an independently trusted caller. Fixture receipts prove verifier behavior, not historical or live validation provenance. S1 still requires separately authorized official access and authoritative claim/fencing; S3 still requires actual native/sandbox/process qualification. Source verification supplies applicability evidence, never authority.
 
 ## Notion admission and test ownership
 
