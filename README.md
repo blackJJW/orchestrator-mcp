@@ -53,9 +53,9 @@ The two fixture profiles point only to inert workspaces owned by this repository
 
 ## Boundaries and source control
 
-`internal/config` owns filesystem validation; `internal/core` returns synchronous pure decisions; `cmd/orchestrator-mcp` handles CLI and JSON I/O. The Notion adapter makes bounded, fixed-host GET requests only when a caller supplies a token; it never reads credential files and its claim method always refuses writes. The Codex adapter requires a separate host-issued read-only launch grant; fixtures execute only the test binary. The CLI does not invoke these adapters. There is no daemon, journal, Docker package or MCP server. Workspace comparison is a dry-run check, not a runtime sandbox.
+`internal/config` owns profile/source filesystem validation; `internal/core` returns synchronous pure decisions; `cmd/orchestrator-mcp` handles CLI and JSON I/O. The journal adapter owns fixture-only persistence. The Notion adapter makes bounded, fixed-host GET requests only when a caller supplies a token; it never reads credential files and its claim method always refuses writes. The Codex adapter requires a separate host-issued read-only launch grant; fixtures execute only the test binary. The CLI does not invoke these adapters. There is no daemon, Docker package or MCP server. Workspace comparison is a dry-run check, not a runtime sandbox.
 
-The initial `main` used the independently accepted bootstrap source, followed by the reviewed Notion and Codex integrations. The S2 candidate is isolated on its review branch. Later implementation candidates require separate branches and independent review before integration. Existing public history is preserved; this candidate does not repair earlier merge metadata.
+The initial `main` used the independently accepted bootstrap source, followed by the reviewed Notion and Codex integrations. S1/S2/S3 source and fixture contracts are integrated; live qualification remains separate. Later implementation candidates require separate branches and independent review before integration. Existing public history is preserved; this candidate does not repair earlier merge metadata.
 
 Before every publication, use an explicit reviewed file allowlist and inspect every staged file and the prospective commit history. Do not bulk-stage a private working directory. Keep local evidence, reports, binaries, caches, credentials, real environment files and personal settings outside Git. Git publication does not grant provider, runtime or acceptance authority.
 
@@ -90,3 +90,11 @@ claim stays denied. Conditional claim/fencing is proved only by a test-local aut
 with actual Git source rechecks and fake consumer delivery. The immutable result/readback
 contract performs no write or retry. See [S1 contract](docs/S1-ACCESS.md). Actual access,
 Notion atomicity and native execution remain unqualified; the CLI stays dry-run only.
+
+## MTT-574 fixture journal
+
+The [stage A contract](docs/MTT-574.md) adds a fixed workspace-private singleton lock and
+durable intent/consumed-run ledger. Crash uncertainty blocks duplicate fake delivery;
+saved results recover without a provider rerun and exact readback confirms only delivery.
+The provider-neutral record currently supports Codex only. The helpers stay disconnected
+from the CLI/executor and add no live Notion writer, launch grant, MCP or operating authority.
