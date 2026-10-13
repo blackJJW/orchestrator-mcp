@@ -80,3 +80,11 @@ The [Codex adapter contract](docs/MTT-573.md) preserves fixed argv, stdin-only b
 JSONL duplicate keys and typed field aliases fail closed. The versioned CLI stream exposes agent message text without a final-phase discriminator, so the controller requires exactly one response-contract candidate in the last completed agent message. Ordinary progress remains valid; multiple or conflicting candidates are unsupported. A successful result is only `COMPLETED_UNVERIFIED`, never acceptance or DONE.
 
 Historical corrections2/2 remain recorded separately from the newly authorized C1/C2 slice. Fake/race validation and source review do not qualify live authentication, cross-process ownership, atomic Notion claims, real source verification, sandbox or descendant cleanup. No provider job, journal, MCP server or merge is part of this candidate.
+
+## S1 access and fixture claims
+
+The scoped Notion read adapter binds a caller-approved finite access scope. Production
+claim stays denied. Conditional claim/fencing is proved only by a test-local authority
+with actual Git source rechecks and fake consumer delivery. The immutable result/readback
+contract performs no write or retry. See [S1 contract](docs/S1-ACCESS.md). Actual access,
+Notion atomicity and native execution remain unqualified; the CLI stays dry-run only.
