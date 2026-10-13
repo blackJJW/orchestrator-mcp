@@ -67,6 +67,8 @@ The [S2 contract](docs/S2-IDENTITY.md) describes `intake.NewGitSource` and its t
 
 Canonical/review receipt projections and raw artifacts must be pinned by an independently trusted caller. Fixture receipts prove verifier behavior, not historical or live validation provenance. S1 still requires separately authorized official access and authoritative claim/fencing; S3 still requires actual native/sandbox/process qualification. Source verification supplies applicability evidence, never authority.
 
+S3 adds only read-only fixture prequalification and cleanup observation checks in the existing Codex adapter. Native-header fixtures, explicit empty environment directories, S1 source/claim bindings and non-PID-only cleanup identities fail closed on drift or unknown evidence. These helpers do not connect to native execution, inspect provider credentials, enforce an OS sandbox or recover processes. See [MTT-573's S3 fixture contract](docs/MTT-573.md#s3-fixture-prequalification); actual launch and MTT-574 remain separately unqualified.
+
 ## Notion admission and test ownership
 
 The [Notion admission contract](docs/MTT-572.md) describes the reader and host-supplied authority checks. Missing, null, duplicate or case-alias schema fields fail closed. Empty dependency relations, permitted null lease dates and optional extensions retain their supported meanings. Admission checks the selected task, project, permission, owner, nonce, lease, dependencies, brief and source before and after a fixture claim. An admitted result still has `execution_started=false` and grants no provider execution or lifecycle acceptance.
