@@ -30,10 +30,11 @@ const limit = 1 << 20
 
 // Identity is supplied by the fixture caller after S1/S2/S3 checks, never a launch grant.
 type Identity struct {
-	Contract core.Contract
-	Claim    notion.ClaimState
-	Proof    config.SourceProof
-	Deadline time.Time
+	Contract             core.Contract
+	Claim                notion.ClaimState
+	Proof                config.SourceProof
+	Deadline             time.Time
+	DeliveryTargetDigest string `json:"DeliveryTargetDigest,omitempty"`
 }
 
 // ProcessEvidence is a provider-neutral model observation, not OS provenance.
@@ -58,6 +59,7 @@ type Record struct {
 type ledger struct {
 	Version            int
 	Project, Workspace string
+	StorageRoot        string `json:"StorageRoot,omitempty"`
 	Records            []Record
 	Digest             string
 }
@@ -74,18 +76,39 @@ type Fixture struct {
 // OpenFixture uses one fixed namespace per canonical, explicitly supplied workspace.
 // It holds an advisory kernel lock until Close; it never removes or replaces the lock file.
 func OpenFixture(profile config.Profile) (*Fixture, error) {
+	return openFixture(profile, profile.WorkspaceRoot, false)
+}
+
+// OpenControllerFixture separates controller-owned persistence from read-only source bytes.
+func OpenControllerFixture(profile config.Profile, controllerRoot string) (*Fixture, error) {
+	return openFixture(profile, controllerRoot, true)
+}
+
+func openFixture(profile config.Profile, controllerRoot string, separate bool) (*Fixture, error) {
 	root, err := config.ResolveWorkspace(profile.WorkspaceRoot)
 	if err != nil || root != profile.WorkspaceRoot || profile.ProjectID == "" || profile.SchemaVersion != 1 {
 		return nil, ErrIdentity
 	}
-	parent := filepath.Join(root, ".local")
+	storage, err := config.ResolveWorkspace(controllerRoot)
+	if err != nil || storage != controllerRoot {
+		return nil, ErrIdentity
+	}
+	if separate {
+		for _, pair := range [][2]string{{root, storage}, {storage, root}} {
+			rel, e := filepath.Rel(pair[0], pair[1])
+			if e != nil || (rel != ".." && !strings.HasPrefix(rel, "../")) {
+				return nil, ErrIdentity
+			}
+		}
+	}
+	parent := filepath.Join(storage, ".local")
 	if err := os.MkdirAll(parent, 0700); err != nil {
 		return nil, err
 	}
 	if resolved, err := filepath.EvalSymlinks(parent); err != nil || resolved != parent {
 		return nil, ErrIdentity
 	}
-	dir := filepath.Join(root, Namespace)
+	dir := filepath.Join(storage, Namespace)
 	created := os.Mkdir(dir, 0700) == nil
 	info, err := os.Lstat(dir)
 	if err != nil || !info.IsDir() || info.Mode().Perm() != 0700 {
@@ -120,6 +143,9 @@ func OpenFixture(profile config.Profile) (*Fixture, error) {
 		return nil, err
 	}
 	f.disk = ledger{Version: 1, Project: profile.ProjectID, Workspace: root, Records: []Record{}}
+	if separate {
+		f.disk.StorageRoot = storage
+	}
 	_, nextErr := os.Lstat(filepath.Join(dir, "journal.next"))
 	if !errors.Is(nextErr, os.ErrNotExist) {
 		f.Close()
@@ -151,6 +177,65 @@ func (f *Fixture) Close() error {
 func (f *Fixture) IntentFixture(id Identity, now time.Time) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	return f.intent(id, now)
+}
+
+// ClaimIntentFixture atomically binds local fencing and consumption; it never claims Notion.
+func (f *Fixture) ClaimIntentFixture(id Identity, now time.Time) (Identity, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.check(); err != nil {
+		return Identity{}, err
+	}
+	var fence uint64
+	for _, r := range f.disk.Records {
+		if r.Identity.Claim.Fence > fence {
+			fence = r.Identity.Claim.Fence
+		}
+	}
+	b := id.Claim.Binding
+	state, err := notion.ClaimTransition(b, notion.ClaimState{Binding: b, Owner: "Unclaimed", Fence: fence}, "", fence,
+		core.Claim{Owner: id.Claim.Owner, Nonce: id.Claim.Nonce, LeaseUntil: id.Claim.LeaseUntil}, id.Proof, now)
+	if err != nil {
+		return Identity{}, ErrIdentity
+	}
+	id.Claim = state
+	if err := f.intent(id, now); err != nil {
+		return Identity{}, err
+	}
+	return id, nil
+}
+
+// FindFixture reads only an already consumed identity; it cannot authorize a new delivery.
+func (f *Fixture) FindFixture(id Identity, now time.Time) (Record, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.check(); err != nil {
+		return Record{}, false, err
+	}
+	for i := len(f.disk.Records) - 1; i >= 0; i-- {
+		r := f.disk.Records[i]
+		if r.Identity.Claim.Binding.TaskID != id.Claim.Binding.TaskID || r.Identity.Claim.Binding.RunID != id.Claim.Binding.RunID {
+			continue
+		}
+		if r.Identity.Contract != id.Contract || r.Identity.Claim.Binding != id.Claim.Binding || r.Identity.DeliveryTargetDigest != id.DeliveryTargetDigest ||
+			r.Identity.Claim.Owner != id.Claim.Owner || r.Identity.Claim.Nonce != id.Claim.Nonce ||
+			!r.Identity.Claim.LeaseUntil.Equal(id.Claim.LeaseUntil) {
+			return Record{}, true, ErrIdentity
+		}
+		id.Claim, id.Deadline = r.Identity.Claim, r.Identity.Deadline
+		if _, err := f.current(id, now); err != nil {
+			return Record{}, true, err
+		}
+		b, _ := json.Marshal(r)
+		var copy Record
+		_ = json.Unmarshal(b, &copy)
+		return copy, true, nil
+	}
+	return Record{}, false, nil
+}
+
+func (f *Fixture) intent(id Identity, now time.Time) error {
 	if err := f.check(); err != nil {
 		return err
 	}
@@ -249,7 +334,8 @@ func (f *Fixture) identity(id Identity, now time.Time) error {
 	if err != nil || schemaErr != nil || b != id.Claim.Binding || id.Claim.Owner != b.Owner ||
 		!id.Claim.Consumed || id.Claim.Fence == 0 || id.Claim.Nonce == "" ||
 		now.IsZero() || !id.Claim.LeaseUntil.After(now) || id.Deadline.IsZero() || id.Deadline.After(id.Claim.LeaseUntil) ||
-		id.Deadline.After(now.Add(5*time.Minute)) {
+		id.Deadline.After(now.Add(5*time.Minute)) ||
+		(f.disk.StorageRoot != "" && !hash(id.DeliveryTargetDigest)) || (id.DeliveryTargetDigest != "" && !hash(id.DeliveryTargetDigest)) {
 		return ErrIdentity
 	}
 	return nil
@@ -266,7 +352,8 @@ func (f *Fixture) current(id Identity, now time.Time) (Record, error) {
 		r := f.disk.Records[i]
 		b := r.Identity.Claim.Binding
 		if b.TaskID == id.Claim.Binding.TaskID && b.RunID == id.Claim.Binding.RunID {
-			if r.Identity.Contract != id.Contract || !sameClaim(r.Identity.Claim, id.Claim) || !r.Identity.Deadline.Equal(id.Deadline) {
+			if r.Identity.Contract != id.Contract || r.Identity.DeliveryTargetDigest != id.DeliveryTargetDigest ||
+				!sameClaim(r.Identity.Claim, id.Claim) || !r.Identity.Deadline.Equal(id.Deadline) {
 				return Record{}, ErrIdentity
 			}
 			return r, nil
@@ -413,7 +500,7 @@ func (f *Fixture) decode(data []byte) error {
 	}
 	canonical, _ := json.Marshal(disk)
 	if !bytes.Equal(canonical, data) || disk.Version != 1 || disk.Project != f.profile.ProjectID ||
-		disk.Workspace != f.profile.WorkspaceRoot || disk.Records == nil || len(disk.Records) > 128 || disk.Digest != digest(disk) {
+		disk.Workspace != f.profile.WorkspaceRoot || disk.StorageRoot != f.disk.StorageRoot || disk.Records == nil || len(disk.Records) > 128 || disk.Digest != digest(disk) {
 		return ErrUnknown
 	}
 	latest := map[string]Record{}
@@ -423,7 +510,8 @@ func (f *Fixture) decode(data []byte) error {
 		_, schemaErr := notion.NewResultHandoff(id.Claim, []byte("fixture identity validation"))
 		if err != nil || schemaErr != nil || b != id.Claim.Binding || r.Provider != "codex" || r.Sequence != uint64(i+1) ||
 			!id.Claim.Consumed || id.Claim.Owner != b.Owner || id.Claim.Fence == 0 || id.Claim.Nonce == "" ||
-			id.Deadline.IsZero() || id.Deadline.After(id.Claim.LeaseUntil) {
+			id.Deadline.IsZero() || id.Deadline.After(id.Claim.LeaseUntil) ||
+			(disk.StorageRoot != "" && !hash(id.DeliveryTargetDigest)) || (id.DeliveryTargetDigest != "" && !hash(id.DeliveryTargetDigest)) {
 			return ErrUnknown
 		}
 		key := b.TaskID + "\x00" + b.RunID

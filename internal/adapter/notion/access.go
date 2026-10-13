@@ -21,6 +21,8 @@ type AccessScope struct {
 
 type AccessReader struct {
 	reader         *Reader
+	contract       core.Contract
+	accessRef      string
 	taskID, pageID string
 }
 
@@ -56,7 +58,7 @@ func NewAccessReader(profile config.Profile, contract core.Contract, scope Acces
 	client := *reader.client
 	client.Transport = accessTransport{reader.client.Transport, pages}
 	clone.client = &client
-	return &AccessReader{reader: &clone, taskID: contract.TaskID, pageID: contract.PageID}, nil
+	return &AccessReader{reader: &clone, taskID: contract.TaskID, pageID: contract.PageID, contract: contract, accessRef: callerRef}, nil
 }
 
 func (r *AccessReader) Read(ctx context.Context, id string) (core.TaskSnapshot, error) {
@@ -95,4 +97,9 @@ func (a accessTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return nil, intake.ErrAccess
 	}
 	return a.next.RoundTrip(req)
+}
+
+// MatchesBinding checks the scoped caller authority without exposing authentication.
+func (r *AccessReader) MatchesBinding(contract core.Contract, reference string) bool {
+	return r != nil && r.contract == contract && r.accessRef == reference
 }

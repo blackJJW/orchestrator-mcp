@@ -39,6 +39,7 @@ type Request struct {
 }
 
 type Invocation struct {
+	Environment []string
 	Args        []string
 	Dir, Prompt string
 }
@@ -415,7 +416,7 @@ func (n nativeRunner) Run(ctx context.Context, i Invocation) Process {
 	if !pinned(n.path, n.sha) {
 		return Process{ExitCode: -1, Err: os.ErrPermission}
 	}
-	return runProcess(ctx, n.path, i.Args, i.Dir, i.Prompt)
+	return runProcessEnvironment(ctx, n.path, i.Args, i.Dir, i.Prompt, i.Environment)
 }
 
 func pinned(path, sha string) bool {
@@ -459,12 +460,19 @@ func (b *bounded) Write(p []byte) (int, error) {
 }
 
 func runProcess(ctx context.Context, path string, args []string, dir, prompt string) Process {
+	return runProcessEnvironment(ctx, path, args, dir, prompt, nil)
+}
+
+func runProcessEnvironment(ctx context.Context, path string, args []string, dir, prompt string, environment []string) Process {
 	root, err := config.ResolveWorkspace(dir)
 	if err != nil || root != dir {
 		return Process{ExitCode: -1, Err: os.ErrPermission}
 	}
 	cmd := exec.CommandContext(ctx, path, args...)
 	cmd.Dir = dir
+	if environment != nil {
+		cmd.Env = append([]string(nil), environment...)
+	}
 	cmd.Stdin = strings.NewReader(prompt)
 	// Own a new process group so deadline/cancel cannot leave inherited-pipe children running.
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

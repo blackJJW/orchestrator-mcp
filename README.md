@@ -98,3 +98,12 @@ durable intent/consumed-run ledger. Crash uncertainty blocks duplicate fake deli
 saved results recover without a provider rerun and exact readback confirms only delivery.
 The provider-neutral record currently supports Codex only. The helpers stay disconnected
 from the CLI/executor and add no live Notion writer, launch grant, MCP or operating authority.
+
+Stage B development connects the existing scoped reader, local Git proof, local durable
+ownership, sealed fake Executor and one bounded result block/readback. Controller-owned
+storage must be explicitly separate from the read-only source workspace. Native mode
+is denied and the CLI stays dry-run. Writer authority, target and operation are pinned
+before intent; changed targets and deleted/malformed readback remain blocked.
+Official access, credentials, live delivery,
+provider/sandbox qualification and Pilot permissions remain pending. See the
+[Stage B boundary](docs/MTT-574.md#stage-b-development-connector).
