@@ -34,12 +34,21 @@ type FixtureBridge struct {
 	mu      sync.Mutex
 	plan    BridgePlan
 	journal *journal.Fixture
+	native  *NativeActivation
 }
 
 // Development-only connector. Native mode is refused even with a model launch grant.
 func NewFixtureBridge(p BridgePlan) (*FixtureBridge, error) {
+	return newBridge(p, nil)
+}
+
+func newBridge(p BridgePlan, native *NativeActivation) (*FixtureBridge, error) {
+	mode := "fake"
+	if native != nil {
+		mode = "native"
+	}
 	if p.DevelopmentRef == "" || strings.TrimSpace(p.DevelopmentRef) != p.DevelopmentRef || strings.ContainsAny(p.DevelopmentRef, "\r\n\x00") ||
-		p.Reader == nil || p.Source == nil || p.Executor == nil || p.Executor.mode != "fake" || p.Executor.runner == nil || p.Delivery == nil || p.Cleanup == nil || p.BirthToken == "" {
+		p.Reader == nil || p.Source == nil || p.Executor == nil || p.Executor.mode != mode || p.Executor.runner == nil || p.Delivery == nil || p.Cleanup == nil || p.BirthToken == "" {
 		return nil, ErrLivePending
 	}
 	r := p.Preflight.Request
@@ -53,11 +62,18 @@ func NewFixtureBridge(p BridgePlan) (*FixtureBridge, error) {
 	p.Preflight.Environment = maps.Clone(p.Preflight.Environment)
 	p.Observation.Environment = maps.Clone(p.Observation.Environment)
 	p.Preflight.Source.Receipts = slices.Clone(p.Preflight.Source.Receipts)
+	b := &FixtureBridge{plan: p, native: native}
+	if native != nil {
+		if err := b.checkNative(context.Background(), p.Preflight.Source, "open"); err != nil {
+			return nil, err
+		}
+	}
 	j, err := journal.OpenControllerFixture(p.Preflight.Request.Profile, p.ControllerRoot)
 	if err != nil {
 		return nil, err
 	}
-	return &FixtureBridge{plan: p, journal: j}, nil
+	b.journal = j
+	return b, nil
 }
 
 func (b *FixtureBridge) Close() error {
@@ -66,13 +82,13 @@ func (b *FixtureBridge) Close() error {
 	return b.journal.Close()
 }
 
-// Run remains development/fake only; no CLI or production activation flag is added.
+// Run is shared with the separately gated native adapter; the CLI stays dry-run.
 func (b *FixtureBridge) Run(ctx context.Context) (Result, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	p := b.plan
 	r := p.Preflight.Request
-	denied := Result{SchemaVersion: 1, TaskID: r.Contract.TaskID, RunID: r.RunID, Mode: "fake", Outcome: "BLOCKED", ExitCode: -1}
+	denied := Result{SchemaVersion: 1, TaskID: r.Contract.TaskID, RunID: r.RunID, Mode: p.Executor.mode, Outcome: "BLOCKED", ExitCode: -1}
 	if ctx.Err() != nil {
 		return denied, ctx.Err()
 	}
@@ -88,6 +104,10 @@ func (b *FixtureBridge) Run(ctx context.Context) (Result, error) {
 		Nonce: r.Grant.ClaimNonce, LeaseUntil: r.Grant.LeaseUntil}, Deadline: time.Now().Add(r.Timeout)}
 	if id.Claim.LeaseUntil.Before(id.Deadline) {
 		id.Deadline = id.Claim.LeaseUntil
+	}
+	if b.native != nil {
+		id.Deadline = b.native.Deadline
+		id.ExecutionDigest = b.nativeLaunch().Digest()
 	}
 	saved, exists, err := b.journal.FindFixture(id, time.Now())
 	if err != nil {
@@ -107,7 +127,7 @@ func (b *FixtureBridge) Run(ctx context.Context) (Result, error) {
 	proposed.Claim = id.Claim
 	proposed.Claim.Consumed = true
 	proposed.Claim.Fence = 1
-	if _, err := CheckFixturePreflight(proposed, p.Observation, time.Now()); err != nil {
+	if err := b.preflight(ctx, proposed); err != nil {
 		return denied, err
 	}
 	if ctx.Err() != nil {
@@ -121,11 +141,18 @@ func (b *FixtureBridge) Run(ctx context.Context) (Result, error) {
 	r.Store = &store
 	r.Source = p.Source
 	guard := bridgeRunner{bridge: b, id: id, inner: p.Executor.runner}
-	result := NewFake(&guard).Execute(ctx, r, time.Now)
+	if b.native != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithDeadline(ctx, b.native.Deadline)
+		defer cancel()
+	}
+	result := (&Executor{runner: &guard, mode: p.Executor.mode}).Execute(ctx, r, time.Now)
 	if !guard.started {
 		return result, journal.ErrUnknown
 	}
-	observation, err := p.Cleanup(ctx, result, id.Claim)
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cleanupCancel()
+	observation, err := p.Cleanup(cleanupCtx, result, id.Claim)
 	if err != nil {
 		return result, ErrCleanup
 	}
@@ -215,7 +242,7 @@ func (r *bridgeRunner) Run(ctx context.Context, i Invocation) Process {
 	plan := p.Preflight
 	plan.Source = proof
 	plan.Claim = r.id.Claim
-	if _, err := CheckFixturePreflight(plan, p.Observation, time.Now()); err != nil {
+	if err := r.bridge.preflight(ctx, plan); err != nil {
 		return Process{ExitCode: -1, Err: err}
 	}
 	if record, ok, err := r.bridge.journal.FindFixture(r.id, time.Now()); err != nil || !ok || record.Stage != "INTENT" {
@@ -232,6 +259,11 @@ func (b *FixtureBridge) deliver(ctx context.Context, id journal.Identity) error 
 		return err
 	}
 	id.Proof = proof
+	if b.native != nil {
+		if err := b.checkNative(ctx, proof, "result"); err != nil {
+			return err
+		}
+	}
 	record, err := b.journal.RecoverFixture(id, time.Now())
 	if err != nil {
 		return err
@@ -240,6 +272,10 @@ func (b *FixtureBridge) deliver(ctx context.Context, id journal.Identity) error 
 		return nil
 	}
 	matching, empty, err := b.plan.Delivery.Observe(ctx, *record.Delivery, record.Payload)
+	if ctx.Err() != nil {
+		_ = b.journal.ReadbackFixture(id, nil, time.Now())
+		return journal.ErrUnknown
+	}
 	if err == nil && matching {
 		return b.journal.ReadbackFixture(id, record.Delivery, time.Now())
 	}
@@ -252,10 +288,24 @@ func (b *FixtureBridge) deliver(ctx context.Context, id journal.Identity) error 
 	if err := b.journal.ReadbackFixture(id, nil, time.Now()); err != journal.ErrUnknown {
 		return err
 	}
+	if ctx.Err() != nil {
+		return journal.ErrUnknown
+	}
 	_ = b.plan.Delivery.Replace(ctx, *record.Delivery, record.Payload)
+	if ctx.Err() != nil {
+		return journal.ErrUnknown
+	}
 	matching, _, err = b.plan.Delivery.Observe(ctx, *record.Delivery, record.Payload)
-	if err != nil || !matching {
+	if err != nil || !matching || ctx.Err() != nil {
 		return journal.ErrUnknown
 	}
 	return b.journal.ReadbackFixture(id, record.Delivery, time.Now())
+}
+
+func (b *FixtureBridge) preflight(ctx context.Context, p FixturePreflight) error {
+	if b.native != nil {
+		return b.checkNative(ctx, p.Source, "spawn")
+	}
+	_, err := CheckFixturePreflight(p, b.plan.Observation, time.Now())
+	return err
 }
