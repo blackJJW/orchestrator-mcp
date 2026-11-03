@@ -32,6 +32,7 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	profile := flags.String("profile", "", "operator-selected JSON profile (required)")
 	sourceSpec := flags.String("source-spec", "", "operator-selected fixed S2 binding JSON (optional)")
 	port := flags.Int("port", 8080, "127.0.0.1 TCP port; 0 selects a free local port")
+	containerListen := flags.Bool("container-listen", false, "listen on 0.0.0.0 inside Docker only; publish host loopback only")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -41,11 +42,19 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	if flags.NArg() != 0 || *profile == "" || *port < 0 || *port > 65535 {
 		return errors.New("an explicit -profile and port 0..65535 are required; positional arguments are unsupported")
 	}
+	address := "127.0.0.1"
+	if *containerListen {
+		marker, err := os.Lstat("/.dockerenv")
+		if err != nil || !marker.Mode().IsRegular() {
+			return errors.New("-container-listen requires Docker; host publication must remain loopback-only")
+		}
+		address = "0.0.0.0"
+	}
 	handler, err := mcpserver.NewHandler(*profile, *sourceSpec)
 	if err != nil {
 		return err
 	}
-	listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(*port)))
+	listener, err := net.Listen("tcp4", net.JoinHostPort(address, strconv.Itoa(*port)))
 	if err != nil {
 		return err
 	}

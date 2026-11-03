@@ -3,7 +3,10 @@ package mcpserver
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"net/netip"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -49,6 +52,11 @@ func NewHandler(profilePath, sourceSpecPath string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	protection := http.NewCrossOriginProtection()
 	mux.Handle("/mcp", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Docker NAT is not a loopback destination; retain the SDK's loopback Host policy there too.
+		if !loopbackHost(r.Host) {
+			http.Error(w, "invalid Host", http.StatusForbidden)
+			return
+		}
 		// MCP validates explicit Origin on safe methods too, independently of fetch metadata.
 		check := *r
 		check.Method = http.MethodPost
@@ -63,4 +71,12 @@ func NewHandler(profilePath, sourceSpecPath string) (http.Handler, error) {
 		transport.ServeHTTP(w, r)
 	}))
 	return mux, nil
+}
+
+func loopbackHost(host string) bool {
+	if name, _, err := net.SplitHostPort(host); err == nil {
+		host = name
+	}
+	ip, err := netip.ParseAddr(strings.Trim(host, "[]"))
+	return host == "localhost" || (err == nil && ip.IsLoopback())
 }

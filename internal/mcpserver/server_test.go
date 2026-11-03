@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -176,5 +177,28 @@ func TestHTTPBoundaries(t *testing.T) {
 func TestInvalidStartupProfile(t *testing.T) {
 	if h, err := NewHandler("", ""); err == nil || h != nil {
 		t.Fatal("missing profile accepted")
+	}
+}
+
+func TestHostProtectionBehindContainerNAT(t *testing.T) {
+	server, _ := testServer(t)
+	local := &net.TCPAddr{IP: net.ParseIP("172.18.0.2"), Port: 8080}
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2026-07-28","capabilities":{},"clientInfo":{"name":"nat-test","version":"1"}}}`
+	for _, host := range []string{"127.0.0.1:8080", "localhost:8080", "[::1]:8080", "attacker.invalid", "127.0.0.1.attacker.invalid:8080", "172.18.0.2:8080", "0.0.0.0:8080"} {
+		t.Run(host, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "http://"+host+"/mcp", strings.NewReader(body))
+			req = req.WithContext(context.WithValue(req.Context(), http.LocalAddrContextKey, local))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Accept", "application/json, text/event-stream")
+			w := httptest.NewRecorder()
+			server.Config.Handler.ServeHTTP(w, req)
+			want := http.StatusForbidden
+			if host == "127.0.0.1:8080" || host == "localhost:8080" || host == "[::1]:8080" {
+				want = http.StatusOK
+			}
+			if w.Code != want || req.Context().Value(http.LocalAddrContextKey) != local {
+				t.Fatalf("NAT Host protection: %s status=%d want=%d", host, w.Code, want)
+			}
+		})
 	}
 }

@@ -6,6 +6,8 @@ The separate read-only MCP entrypoint serves `check_scope` and, only with an exp
 operator-owned S2 binding, `verify_source` at
 `http://127.0.0.1:8080/mcp`, using the official Go MCP SDK and the same Core/Config.
 See [MCP startup, connection and security](docs/MCP.md). It does not dispatch work.
+The same server can run as one non-root Docker Compose service with read-only
+profile/workspace mounts and a host-loopback-only port; see [Docker Compose](docs/MCP.md#docker-compose-local-only).
 
 ## Build and validation
 
