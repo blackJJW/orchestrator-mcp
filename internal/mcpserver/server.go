@@ -1,4 +1,4 @@
-// Package mcpserver exposes only the existing dry-run scope decision over MCP.
+// Package mcpserver exposes read-only scope and optional S2 source verification over MCP.
 package mcpserver
 
 import (
@@ -12,10 +12,17 @@ import (
 )
 
 // NewHandler loads the operator's one profile before accepting any client input.
-func NewHandler(profilePath string) (http.Handler, error) {
+func NewHandler(profilePath, sourceSpecPath string) (http.Handler, error) {
 	profile, err := config.Load(profilePath)
 	if err != nil {
 		return nil, err
+	}
+	var binding *sourceBinding
+	if sourceSpecPath != "" {
+		binding, err = loadSourceBinding(profile, sourceSpecPath)
+		if err != nil {
+			return nil, err
+		}
 	}
 	server := mcp.NewServer(&mcp.Implementation{Name: "orchestrator-mcp", Version: "0.1.0"}, nil)
 	closedWorld := false
@@ -27,6 +34,15 @@ func NewHandler(profilePath string) (http.Handler, error) {
 		// Compare the canonical profile root directly; never resolve arbitrary client paths.
 		return nil, core.Plan(&profile, input), nil
 	})
+	if binding != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "verify_source",
+			Description: "Verify the operator's fixed local Git/source/brief/receipt binding for one task. Read-only; proof grants no Claim, execution or future immutability.",
+			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closedWorld},
+		}, func(ctx context.Context, _ *mcp.CallToolRequest, input sourceInput) (*mcp.CallToolResult, sourceResult, error) {
+			return nil, verifySource(ctx, profile, *binding, input.TaskID), nil
+		})
+	}
 	transport := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
 		Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 64 << 10,
 	})

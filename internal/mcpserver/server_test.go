@@ -26,7 +26,7 @@ func testServer(t *testing.T) (*httptest.Server, string) {
 	if err := os.WriteFile(profile, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewHandler(profile)
+	h, err := NewHandler(profile, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,9 +107,11 @@ func TestMCPHTTPDiscoveryAndCalls(t *testing.T) {
 			}
 		})
 	}
-	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "execute", Arguments: map[string]any{}})
-	if err == nil && (res == nil || !res.IsError) {
-		t.Fatalf("unknown tool accepted: %+v", res)
+	for _, name := range []string{"execute", "verify_source"} {
+		res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: map[string]any{}})
+		if err == nil && (res == nil || !res.IsError) {
+			t.Fatalf("unknown/unconfigured tool accepted: %+v", res)
+		}
 	}
 	t.Logf("initialize/discovery/calls completed at %s/mcp", s.URL)
 }
@@ -172,7 +174,7 @@ func TestHTTPBoundaries(t *testing.T) {
 }
 
 func TestInvalidStartupProfile(t *testing.T) {
-	if h, err := NewHandler(""); err == nil || h != nil {
+	if h, err := NewHandler("", ""); err == nil || h != nil {
 		t.Fatal("missing profile accepted")
 	}
 }

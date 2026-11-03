@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,5 +114,20 @@ func TestStartupRejects(t *testing.T) {
 	}
 	if err := run(context.Background(), []string{"-help"}, io.Discard); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestInvalidSourceSpecStopsBeforeListen(t *testing.T) {
+	profile, err := filepath.Abs("../../testdata/projects/alpha.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec := filepath.Join(t.TempDir(), "invalid-source.json")
+	if err := os.WriteFile(spec, []byte(`{"contract":null}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	if err := run(context.Background(), []string{"-profile", profile, "-source-spec", spec, "-port", "0"}, &output); err == nil || output.Len() != 0 {
+		t.Fatalf("invalid source binding opened a listener: %v %s", err, output.String())
 	}
 }
