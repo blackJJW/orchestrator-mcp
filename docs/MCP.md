@@ -137,12 +137,82 @@ and unsupported compatibility remain rejected. The operator must provide an
 authentic approved binding and independently trusted receipt/artifact pins; do
 not derive expectations from a receipt, relabel MTT-690 logs as S2 acceptance, or
 create operational evidence to make this tool pass. Fixture projections in tests
-remain explicitly inert. A real approved target without these inputs is
-**UNVERIFIED**, even if the tool's fixture tests pass.
+remain explicitly inert. Current real-target readiness is
+**APPROVED_TARGET_NOT_READY**; its S2 SourceProof eligibility is **UNVERIFIED**.
+Do not invoke a real target until its exact approved Task/Contract/SourceSpec/task
+base, applicable standalone complete checkout, and existing canonical/review
+receipts with independently approved pins are available together. These are the
+existing S2 applicability inputs for that target, not new development gates. Do
+not select a target, create inputs or convert old receipts to satisfy this example.
 
 This tool does not call `intake.Admit`, Claim, NativeBridge, Journal or a Notion
 writer. Source verification observes current applicability; it grants no execution,
 Claim, lifecycle acceptance, atomic filesystem snapshot or future immutability.
+
+## Codex CLI: invocation-only connection
+
+Run the server manually in one terminal using the command above: omit
+`-source-spec` for `check_scope` only; supply it only for an already approved
+binding to add `verify_source`. Run Codex from the repository root in another
+Bash or zsh terminal. Reuse the existing official Codex login and configuration; no new login,
+API key, MCP OAuth login or separate `CODEX_HOME` is needed for this local endpoint.
+The prompt uses Codex's normal model service; it does not launch the Native Controller.
+
+The accepted calls used CLI 0.163.0 and `-c` overrides for that invocation, not
+`codex mcp add` or edits to saved configuration. Choose an unused server name
+(shown as `orchestrator_readonly`) and use the URL actually printed by the server:
+
+```bash
+orchestrator_mcp_args=(
+  --disable plugins --disable apps --disable shell_tool --disable unified_exec
+  --disable shell_snapshot
+  -c 'hooks.enabled=false' -c 'notify=[]' -c 'web_search="disabled"'
+  -c 'approval_policy="never"'
+  -c 'mcp_servers.orchestrator_readonly.url="http://127.0.0.1:8080/mcp"'
+  -c 'mcp_servers.orchestrator_readonly.enabled=true'
+  -c 'mcp_servers.orchestrator_readonly.required=true'
+  -c 'mcp_servers.orchestrator_readonly.enabled_tools=["check_scope"]'
+)
+codex "${orchestrator_mcp_args[@]}" mcp list --json
+```
+
+Overrides merge with existing MCP entries. For an isolated call, append an
+invocation-only `-c 'mcp_servers.<exact-existing-name>.enabled=false'` to the array
+for each other enabled server already listed, then list again. Replace the name
+with an actual listed entry; do not add a nonexistent placeholder entry. The
+recorded tests enabled only the target server and left saved entries unchanged.
+
+With the example alpha profile and no source binding, call `check_scope` once:
+
+```bash
+orchestrator_workspace="$(cd testdata/workspaces/alpha && pwd -P)"
+codex "${orchestrator_mcp_args[@]}" exec --ephemeral --sandbox read-only --json \
+  "Use only orchestrator_readonly.check_scope. Call it once with {\"task_id\":\"bootstrap-check\",\"workspace\":\"${orchestrator_workspace}\",\"permission\":\"source.read\"}. Do not use other tools or change files. Stop if unavailable."
+```
+
+Only when the server was started with existing approved `-source-spec` inputs,
+replace the placeholder below with that binding's exact Task ID and call:
+
+```bash
+codex "${orchestrator_mcp_args[@]}" \
+  -c 'mcp_servers.orchestrator_readonly.enabled_tools=["verify_source"]' \
+  exec --ephemeral --sandbox read-only --json \
+  'Use only orchestrator_readonly.verify_source. Call it once with {"task_id":"ALREADY_APPROVED_TASK_ID"}. Do not use other tools or change files. Stop if unavailable.'
+```
+
+Do not run that real-target example while readiness is `APPROVED_TARGET_NOT_READY`.
+An inert Fixture binding tests consistency of test inputs only; it cannot stand in
+for approved real inputs. No operational binding or receipt is bundled here.
+
+`mcp list` confirms configuration only. Inspect the JSON event stream for the
+actual completed `mcp_tool_call`, its arguments and structured result; Codex's final
+prose alone is not proof. `-c` does not persist the entry, and `--ephemeral` avoids
+persisting the session rollout. Stop the foreground server with Ctrl-C/SIGTERM;
+there is no saved MCP entry to remove. If a port is occupied, leave its process
+alone, use `-port 0`, and substitute the printed URL in the invocation options.
+
+See official [one-off configuration](https://learn.chatgpt.com/docs/config-file/config-advanced)
+and [CLI options](https://learn.chatgpt.com/docs/cli/reference).
 
 ## HTTP and authority boundary
 
@@ -172,8 +242,18 @@ exact allowed/denied Decisions, invalid arguments/tools, fixed startup profile,
 Host/Origin/body limits, loopback binding, non-loopback connection rejection and
 graceful shutdown. The existing CLI regressions remain in `make check`.
 
-The previously accepted Codex CLI `check_scope` call proof is preserved. This
-slice's `verify_source` proof uses an actual SDK Client and inert S2 fixtures;
-direct Codex `verify_source` invocation and an operational approved target remain
-unverified. Client settings and Provider-backed prompts are not changed or run.
+Recorded status on 2026-11-03, reusing existing accepted evidence:
+
+| Surface | Result | Scope |
+| --- | --- | --- |
+| `check_scope` | Codex CLI direct call **PASS** | Actual completed MCP calls; allowed/denied scope, `execution_started=false` |
+| `verify_source` | Codex CLI inert Fixture direct call **PASS** | Actual completed MCP calls; `SOURCE_VERIFIED`/true and `TASK_NOT_ALLOWLISTED`/false, failed `proof=null`, both `execution_started=false` |
+| Approved real target | **APPROVED_TARGET_NOT_READY** | No real-target call; complete approved inputs were not established |
+| Real-target S2 SourceProof eligibility | **UNVERIFIED** | Fixture PASS and implementation acceptance do not establish target applicability |
+
+The Codex calls used existing login and invocation-only settings; settings hashes
+and the saved MCP list were unchanged, and the servers exited normally. The
+[`verify_source` integration record](https://github.com/blackJJW/orchestrator-mcp/pull/11)
+separates actual Codex Fixture calls from real-target readiness. Documentation
+maintenance reuses these results; it creates no new runtime acceptance or pins.
 `make check` is offline after the explicit `make deps`.
