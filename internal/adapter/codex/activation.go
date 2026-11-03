@@ -31,6 +31,7 @@ type NativeActivation struct {
 type NativeLaunch struct {
 	ApprovalRef, GrantIssuer, ControllerRoot, BirthToken, DeliveryTargetDigest string
 	Purpose                                                                    string
+	CredentialStore                                                            string
 	Contract                                                                   core.Contract
 	Grant                                                                      Grant
 	Source                                                                     config.SourceProof
@@ -90,7 +91,8 @@ func (b *FixtureBridge) nativeLaunch() NativeLaunch {
 	p, a := b.plan, b.native
 	launch := NativeLaunch{ApprovalRef: a.ApprovalRef, GrantIssuer: a.GrantIssuer,
 		ControllerRoot: p.ControllerRoot, BirthToken: p.BirthToken, DeliveryTargetDigest: b.deliveryDigest(),
-		Contract: p.Preflight.Request.Contract, Grant: *p.Preflight.Request.Grant,
+		CredentialStore: "keyring",
+		Contract:        p.Preflight.Request.Contract, Grant: *p.Preflight.Request.Grant,
 		Source: p.Preflight.Source, Native: p.Preflight.Native, Environment: maps.Clone(p.Preflight.Environment), Deadline: a.Deadline, ReadbackDeadline: a.ReadbackDeadline}
 	if b.localTask != nil {
 		task := *b.localTask

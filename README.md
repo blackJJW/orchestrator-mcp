@@ -132,3 +132,7 @@ an exact launch Grant, sealed authentication, read-only sandbox/network/cleanup 
 and both deadlines mandatory. These are host-callable Go APIs; the CLI stays dry-run.
 This development adds source and inert fixture proof only. Actual Provider execution
 requires separate permission and qualified host inputs; it has not been performed.
+
+Native bridge calls explicitly select the official strict `keyring` credential store;
+the host qualification digest includes that choice. See the [keyring contract](docs/MTT-574.md#native-keyring-credential-store)
+for the required fixed `CODEX_HOME`, operator login and remaining host qualification.

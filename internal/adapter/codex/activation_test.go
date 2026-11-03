@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -70,7 +71,7 @@ func TestNativeActivationDefaultOff(t *testing.T) {
 }
 
 func TestNativeActivationRejects(t *testing.T) {
-	for _, name := range []string{"approval", "issuer", "grant", "deadline", "readback-deadline", "login", "api-auth", "sandbox", "network", "cleanup-proof", "delivery", "observation-error", "binding", "stale", "expired-proof", "identity", "alias", "version", "env-extra", "env-escape", "env-config", "env-permissions", "env-shared", "owner", "source", "brief"} {
+	for _, name := range []string{"approval", "issuer", "grant", "deadline", "readback-deadline", "login", "api-auth", "sandbox", "network", "cleanup-proof", "delivery", "observation-error", "binding", "credential-store-binding", "stale", "expired-proof", "identity", "alias", "version", "env-extra", "env-escape", "env-config", "env-permissions", "env-shared", "owner", "source", "brief"} {
 		t.Run(name, func(t *testing.T) {
 			p, a, f, calls := activationFixture(t)
 			qualify := a.Qualify
@@ -81,6 +82,9 @@ func TestNativeActivationRejects(t *testing.T) {
 					q.Login = false
 				case "api-auth":
 					q.AuthMethod = "api-key"
+				case "credential-store-binding":
+					l.CredentialStore = "file"
+					q.Binding = l.Digest()
 				case "sandbox":
 					q.ReadOnlySandbox = false
 				case "network":
@@ -145,6 +149,36 @@ func TestNativeActivationRejects(t *testing.T) {
 				t.Fatalf("not denied err=%v consumer=%d write=%d", err, *calls, f.writes)
 			}
 		})
+	}
+}
+
+func TestNativeKeyringInvocation(t *testing.T) {
+	p, task, a, f, calls := localFixture(t)
+	inner := p.Executor.runner
+	seen := false
+	p.Executor = NewFake(functionRunner(func(ctx context.Context, i Invocation) Process {
+		seen = true
+		want := []string{"-c", `cli_auth_credentials_store="keyring"`, "exec", "--json", "--sandbox", "read-only", "-c", `approval_policy="never"`, "-C", p.Preflight.Request.Contract.Workspace, "--ephemeral", "--skip-git-repo-check", "-"}
+		if !slices.Equal(i.Args, want) {
+			t.Errorf("native credential store or execution boundary changed: %q", i.Args)
+		}
+		return inner.Run(ctx, i)
+	}))
+	qualify := a.Qualify
+	a.Qualify = func(ctx context.Context, l NativeLaunch) (NativeQualification, error) {
+		if l.CredentialStore != "keyring" {
+			t.Error("credential store missing from host qualification binding")
+		}
+		return qualify(ctx, l)
+	}
+	b, err := inertLocalBridge(t, p, task, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	result, err := b.Run(context.Background())
+	if err != nil || !seen || *calls != 1 || result.Mode != "native" || result.Outcome != "COMPLETED_UNVERIFIED" || f.reads != 0 || f.gets != 0 || f.writes != 0 {
+		t.Fatalf("result=%+v err=%v consumer=%d seen=%v Notion=%d/%d/%d", result, err, *calls, seen, f.reads, f.gets, f.writes)
 	}
 }
 
