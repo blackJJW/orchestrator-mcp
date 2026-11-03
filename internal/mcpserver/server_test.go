@@ -27,7 +27,7 @@ func testServer(t *testing.T) (*httptest.Server, string) {
 	if err := os.WriteFile(profile, data, 0600); err != nil {
 		t.Fatal(err)
 	}
-	h, err := NewHandler(profile, "")
+	h, err := NewHandler(profile, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestMCPHTTPDiscoveryAndCalls(t *testing.T) {
 			}
 		})
 	}
-	for _, name := range []string{"execute", "verify_source"} {
+	for _, name := range []string{"execute", "verify_source", "plan_execution"} {
 		res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: map[string]any{}})
 		if err == nil && (res == nil || !res.IsError) {
 			t.Fatalf("unknown/unconfigured tool accepted: %+v", res)
@@ -175,7 +175,7 @@ func TestHTTPBoundaries(t *testing.T) {
 }
 
 func TestInvalidStartupProfile(t *testing.T) {
-	if h, err := NewHandler("", ""); err == nil || h != nil {
+	if h, err := NewHandler("", "", ""); err == nil || h != nil {
 		t.Fatal("missing profile accepted")
 	}
 }

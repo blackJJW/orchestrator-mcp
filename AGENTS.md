@@ -14,3 +14,4 @@
 - 검증 산출물과 임시 파일은 `.local/`에 둔다. 전역 설치·설정 변경과 외부 의존성 다운로드를 하지 않는다.
 - Git 초기화/branch/commit/push/PR, 실제 task launch, 외부 연결은 별도 권한이 필요하다. 이를 완료한 것처럼 보고하지 않는다.
 - MTT managed task의 coordination은 해당 Operating Protocol을 따른다. 독립 리뷰 전에는 `READY_FOR_REVIEW`로 인계하며 `DONE`을 자체 선언하지 않는다.
+- 사용자 승인 MTT-692 범위에서만 optional 고정 routing policy 기반 read-only `plan_execution`을 추가한다. 범용 순수 Core는 프로젝트가 공급한 executor ID·capability·reasoning만 매핑하며 MTT/Agent 상태를 하드코딩하지 않는다. 응답은 manual dispatch 제안이고 Grant/Claim/실행 권한이 아니다. 현재 running Docker 서비스·이미지·Compose 및 전역 Codex 설정은 변경하지 않는다.

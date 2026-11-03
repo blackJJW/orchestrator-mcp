@@ -113,7 +113,13 @@ func newSourceFixture(t *testing.T) sourceFixture {
 
 func TestVerifySourceMCP(t *testing.T) {
 	f := newSourceFixture(t)
-	h, err := NewHandler(f.profilePath, f.bindingPath)
+	policy, err := os.ReadFile("../../testdata/routing/alpha.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	routingPath := filepath.Join(t.TempDir(), "routing.json")
+	sourceWrite(t, routingPath, []byte(strings.ReplaceAll(string(policy), `"alpha"`, `"fixture-project"`)))
+	h, err := NewHandler(f.profilePath, f.bindingPath, routingPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +137,7 @@ func TestVerifySourceMCP(t *testing.T) {
 	}
 	defer session.Close()
 	tools, err := session.ListTools(ctx, nil)
-	if err != nil || len(tools.Tools) != 2 {
+	if err != nil || len(tools.Tools) != 3 {
 		t.Fatalf("discovery: %+v %v", tools, err)
 	}
 	names := map[string]bool{}
@@ -141,7 +147,7 @@ func TestVerifySourceMCP(t *testing.T) {
 			t.Fatalf("annotations: %+v", tool)
 		}
 	}
-	if !names["check_scope"] || !names["verify_source"] {
+	if !names["check_scope"] || !names["verify_source"] || !names["plan_execution"] {
 		t.Fatal(names)
 	}
 	request := core.Request{TaskID: "source-check", Workspace: f.root, Permission: "source.read"}
@@ -271,7 +277,7 @@ func TestSourceBindingRejects(t *testing.T) {
 	for name, invalid := range cases {
 		t.Run(name, func(t *testing.T) {
 			sourceWrite(t, f.bindingPath, []byte(invalid))
-			if h, err := NewHandler(f.profilePath, f.bindingPath); err != config.ErrSource || h != nil {
+			if h, err := NewHandler(f.profilePath, f.bindingPath, ""); err != config.ErrSource || h != nil {
 				t.Fatalf("invalid binding accepted or leaked error: %v", err)
 			}
 		})
@@ -280,7 +286,7 @@ func TestSourceBindingRejects(t *testing.T) {
 	f.profile.Permissions = []string{"source.write"}
 	encoded, _ := json.Marshal(f.profile)
 	sourceWrite(t, f.profilePath, encoded)
-	if h, err := NewHandler(f.profilePath, f.bindingPath); err != config.ErrSource || h != nil {
+	if h, err := NewHandler(f.profilePath, f.bindingPath, ""); err != config.ErrSource || h != nil {
 		t.Fatal("source.read not required")
 	}
 	f.profile.Permissions = []string{"source.read"}
@@ -296,7 +302,7 @@ func TestSourceBindingRejects(t *testing.T) {
 	}
 	for _, path := range []string{fifo, link, t.TempDir(), filepath.Join(t.TempDir(), "missing")} {
 		start := time.Now()
-		if h, err := NewHandler(f.profilePath, path); err != config.ErrSource || h != nil || time.Since(start) > time.Second {
+		if h, err := NewHandler(f.profilePath, path, ""); err != config.ErrSource || h != nil || time.Since(start) > time.Second {
 			t.Fatalf("nonregular source config accepted/blocked: %v", err)
 		}
 	}

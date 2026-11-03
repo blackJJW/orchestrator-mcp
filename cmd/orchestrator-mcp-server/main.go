@@ -31,6 +31,7 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	flags.SetOutput(stderr)
 	profile := flags.String("profile", "", "operator-selected JSON profile (required)")
 	sourceSpec := flags.String("source-spec", "", "operator-selected fixed S2 binding JSON (optional)")
+	routingPolicy := flags.String("routing-policy", "", "operator-selected fixed routing policy JSON (optional)")
 	port := flags.Int("port", 8080, "127.0.0.1 TCP port; 0 selects a free local port")
 	containerListen := flags.Bool("container-listen", false, "listen on 0.0.0.0 inside Docker only; publish host loopback only")
 	if err := flags.Parse(args); err != nil {
@@ -50,7 +51,7 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 		}
 		address = "0.0.0.0"
 	}
-	handler, err := mcpserver.NewHandler(*profile, *sourceSpec)
+	handler, err := mcpserver.NewHandler(*profile, *sourceSpec, *routingPolicy)
 	if err != nil {
 		return err
 	}
