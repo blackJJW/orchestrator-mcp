@@ -145,7 +145,7 @@ func TestCorrectionEventAndFinalBoundary(t *testing.T) {
 		{"blocked-final", message("checking") + blocked + streamEnd, "SOFT_DENIED"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, _ := parse([]byte(streamPrefix + strings.TrimRight(tc.body, "\n") + "\n"))
+			got, _, _ := parse([]byte(streamPrefix + strings.TrimRight(tc.body, "\n") + "\n"))
 			if got != tc.outcome || got == "ACCEPTED" || got == "DONE" {
 				t.Fatalf("outcome=%s want=%s", got, tc.outcome)
 			}

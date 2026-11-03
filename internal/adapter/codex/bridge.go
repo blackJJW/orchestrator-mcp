@@ -31,28 +31,36 @@ type BridgePlan struct {
 }
 
 type FixtureBridge struct {
-	mu      sync.Mutex
-	plan    BridgePlan
-	journal *journal.Fixture
-	native  *NativeActivation
+	mu        sync.Mutex
+	plan      BridgePlan
+	journal   *journal.Fixture
+	native    *NativeActivation
+	localTask *core.TaskSnapshot
 }
 
 // Development-only connector. Native mode is refused even with a model launch grant.
 func NewFixtureBridge(p BridgePlan) (*FixtureBridge, error) {
-	return newBridge(p, nil)
+	return newBridge(p, nil, nil)
 }
 
-func newBridge(p BridgePlan, native *NativeActivation) (*FixtureBridge, error) {
+func newBridge(p BridgePlan, native *NativeActivation, localTask *core.TaskSnapshot) (*FixtureBridge, error) {
 	mode := "fake"
 	if native != nil {
 		mode = "native"
 	}
 	if p.DevelopmentRef == "" || strings.TrimSpace(p.DevelopmentRef) != p.DevelopmentRef || strings.ContainsAny(p.DevelopmentRef, "\r\n\x00") ||
-		p.Reader == nil || p.Source == nil || p.Executor == nil || p.Executor.mode != mode || p.Executor.runner == nil || p.Delivery == nil || p.Cleanup == nil || p.BirthToken == "" {
+		p.Source == nil || p.Executor == nil || p.Executor.mode != mode || p.Executor.runner == nil || p.Cleanup == nil || p.BirthToken == "" {
 		return nil, ErrLivePending
 	}
 	r := p.Preflight.Request
-	if r.Grant == nil || p.AccessRef == "" || !p.Reader.MatchesBinding(r.Contract, p.AccessRef) || !p.Delivery.MatchesBinding(r.Contract) {
+	if r.Grant == nil || !hostReference(p.AccessRef) {
+		return nil, ErrLivePending
+	}
+	if localTask == nil {
+		if !p.Reader.MatchesBinding(r.Contract, p.AccessRef) || !p.Delivery.MatchesBinding(r.Contract) {
+			return nil, ErrLivePending
+		}
+	} else if p.Reader != nil || p.Delivery != nil || r.Contract.Permission != "source.read" {
 		return nil, ErrLivePending
 	}
 	grant := *r.Grant
@@ -63,6 +71,10 @@ func newBridge(p BridgePlan, native *NativeActivation) (*FixtureBridge, error) {
 	p.Observation.Environment = maps.Clone(p.Observation.Environment)
 	p.Preflight.Source.Receipts = slices.Clone(p.Preflight.Source.Receipts)
 	b := &FixtureBridge{plan: p, native: native}
+	if localTask != nil {
+		task := *localTask
+		b.localTask = &task
+	}
 	if native != nil {
 		if err := b.checkNative(context.Background(), p.Preflight.Source, "open"); err != nil {
 			return nil, err
@@ -96,18 +108,9 @@ func (b *FixtureBridge) Run(ctx context.Context) (Result, error) {
 	if err != nil {
 		return denied, err
 	}
-	binding, err := notion.BindClaim(r.Profile, r.Contract, r.RunID, p.AccessRef, proof)
+	id, err := b.identity(proof)
 	if err != nil {
 		return denied, err
-	}
-	id := journal.Identity{Contract: r.Contract, Proof: proof, DeliveryTargetDigest: p.Delivery.BindingDigest(), Claim: notion.ClaimState{Binding: binding, Owner: binding.Owner,
-		Nonce: r.Grant.ClaimNonce, LeaseUntil: r.Grant.LeaseUntil}, Deadline: time.Now().Add(r.Timeout)}
-	if id.Claim.LeaseUntil.Before(id.Deadline) {
-		id.Deadline = id.Claim.LeaseUntil
-	}
-	if b.native != nil {
-		id.Deadline = b.native.Deadline
-		id.ExecutionDigest = b.nativeLaunch().Digest()
 	}
 	saved, exists, err := b.journal.FindFixture(id, time.Now())
 	if err != nil {
@@ -116,6 +119,9 @@ func (b *FixtureBridge) Run(ctx context.Context) (Result, error) {
 	if exists {
 		if saved.Stage == "INTENT" {
 			return denied, journal.ErrUnknown
+		}
+		if b.localTask != nil {
+			return denied, journal.ErrConsumed
 		}
 		// Reporting may outlive execution deadline; current claim/source proof is still required.
 		saved.Identity.Proof = proof
@@ -166,7 +172,11 @@ func (b *FixtureBridge) Run(ctx context.Context) (Result, error) {
 	if outcome != "COMPLETED_UNVERIFIED" && outcome != "BLOCKED" {
 		outcome = "FAILED"
 	}
-	payload, err := json.Marshal(result)
+	var stored any = result
+	if b.localTask != nil {
+		stored = LocalResult{Result: result, Summary: result.summary}
+	}
+	payload, err := json.Marshal(stored)
 	if err != nil {
 		return result, err
 	}
@@ -176,14 +186,26 @@ func (b *FixtureBridge) Run(ctx context.Context) (Result, error) {
 	if err := b.journal.ResultFixture(id, process, outcome, payload, time.Now()); err != nil {
 		return result, err
 	}
+	if b.localTask != nil {
+		return result, nil
+	}
 	return result, b.deliver(ctx, id)
 }
 
 func (b *FixtureBridge) read(ctx context.Context) (core.TaskSnapshot, config.SourceProof, error) {
 	r := b.plan.Preflight.Request
-	task, err := b.plan.Reader.Read(ctx, r.Contract.PageID)
-	if err != nil {
+	var task core.TaskSnapshot
+	if err := ctx.Err(); err != nil {
 		return task, config.SourceProof{}, err
+	}
+	if b.localTask != nil {
+		task = *b.localTask
+	} else {
+		var err error
+		task, err = b.plan.Reader.Read(ctx, r.Contract.PageID)
+		if err != nil {
+			return task, config.SourceProof{}, err
+		}
 	}
 	// Never hide a raw Notion owner/lease with the local claim overlay.
 	if task.Owner != "Unclaimed" || task.ClaimNonce != "" || task.LeaseUntil.After(time.Now()) {

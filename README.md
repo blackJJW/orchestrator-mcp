@@ -115,3 +115,20 @@ native identity, sandbox/network/cleanup and exact result delivery qualification
 No CLI launch switch or credential discovery is added. Existing user login is insufficient
 in an empty sealed environment; current Notion OAuth MCP tools do not qualify the exact
 block transport. Both operating routes stay blocked, and no provider or Pilot is run.
+
+## Local one-shot result
+
+`codex.NewLocalNativeBridge(plan, task, activation)` reuses the native activation,
+source/brief/receipt checks, singleton and journal with an explicitly host-approved
+local `core.TaskSnapshot`. `plan.Reader` and `plan.Delivery` must be nil; `AccessRef`
+identifies the host's finite local read authority. No Notion token or connection is used.
+`Run(ctx)` consumes one run before spawning and stores the unverified result, including
+its final `summary`, in the private local journal. `ReadResult(ctx)` returns a copied
+durable record, including after close/reopen with the same approved binding. It never
+spawns or writes to Notion. A repeated `Run` is denied; INTENT/uncertain runs stay UNKNOWN.
+
+The [local contract](docs/MTT-574.md#local-one-shot-result) keeps trusted host activation,
+an exact launch Grant, sealed authentication, read-only sandbox/network/cleanup proof
+and both deadlines mandatory. These are host-callable Go APIs; the CLI stays dry-run.
+This development adds source and inert fixture proof only. Actual Provider execution
+requires separate permission and qualified host inputs; it has not been performed.

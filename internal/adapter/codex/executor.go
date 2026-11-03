@@ -94,6 +94,7 @@ type Result struct {
 	RunID          string `json:"run_id"`
 	Mode           string `json:"mode"`
 	Outcome        string `json:"outcome"`
+	summary        string
 	PID            int    `json:"pid,omitempty"`
 	SessionID      string `json:"session_id,omitempty"`
 	ExitCode       int    `json:"exit_code"`
@@ -182,7 +183,7 @@ func (e *Executor) Execute(ctx context.Context, r Request, now func() time.Time)
 	case p.Err != nil || p.ExitCode != 0:
 		result.Outcome = "CLI_FAILED"
 	default:
-		result.Outcome, result.SessionID = parse(p.Stdout)
+		result.Outcome, result.SessionID, result.summary = parse(p.Stdout)
 	}
 	if !g.LeaseUntil.After(now()) || !g.LeaseUntil.After(time.Now()) {
 		result.Outcome = "LEASE_EXPIRED"
@@ -201,7 +202,7 @@ func quota(s string) bool {
 	return strings.Contains(s, "usage limit") || strings.Contains(s, "quota exceeded") || strings.Contains(s, "rate limit")
 }
 
-func parse(data []byte) (string, string) {
+func parse(data []byte) (string, string, string) {
 	scanner := bufio.NewScanner(bytes.NewReader(data))
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
 	phase := 0
@@ -225,23 +226,23 @@ func parse(data []byte) (string, string) {
 			} `json:"item"`
 		}
 		if !uniqueJSON(scanner.Bytes()) || !exactEventKeys(scanner.Bytes()) || json.Unmarshal(scanner.Bytes(), &event) != nil {
-			return "MALFORMED_OUTPUT", session
+			return "MALFORMED_OUTPUT", session, ""
 		}
 		switch event.Type {
 		case "thread.started":
 			if phase != 0 || !sessionID.MatchString(event.ThreadID) {
-				return "UNSUPPORTED_OUTPUT", session
+				return "UNSUPPORTED_OUTPUT", session, ""
 			}
 			session = event.ThreadID
 			phase = 1
 		case "turn.started":
 			if phase != 1 {
-				return "UNSUPPORTED_OUTPUT", session
+				return "UNSUPPORTED_OUTPUT", session, ""
 			}
 			phase = 2
 		case "turn.completed":
 			if phase != 2 {
-				return "UNSUPPORTED_OUTPUT", session
+				return "UNSUPPORTED_OUTPUT", session, ""
 			}
 			phase = 3
 		case "turn.failed", "error":
@@ -251,31 +252,31 @@ func parse(data []byte) (string, string) {
 			}
 		case "item.started", "item.updated", "item.completed":
 			if phase != 2 {
-				return "UNSUPPORTED_OUTPUT", session
+				return "UNSUPPORTED_OUTPUT", session, ""
 			}
 			switch event.Item.Type {
 			case "agent_message":
 				if len(event.Item.Phase) != 0 {
-					return "UNSUPPORTED_OUTPUT", session
+					return "UNSUPPORTED_OUTPUT", session, ""
 				}
 				if event.Type == "item.completed" {
 					final = event.Item.Text
 					if strings.HasPrefix(strings.TrimSpace(final), "{") {
 						var object map[string]json.RawMessage
 						if !uniqueJSON([]byte(final)) || json.Unmarshal([]byte(final), &object) != nil {
-							return "MALFORMED_OUTPUT", session
+							return "MALFORMED_OUTPUT", session, ""
 						}
 						for key := range object {
 							if strings.EqualFold(key, "status") || strings.EqualFold(key, "summary") {
 								if _, valid := finalStatus(final); !valid {
-									return "MALFORMED_OUTPUT", session
+									return "MALFORMED_OUTPUT", session, ""
 								}
 								finals++
 								break
 							}
 						}
 						if finals > 1 {
-							return "UNSUPPORTED_OUTPUT", session
+							return "UNSUPPORTED_OUTPUT", session, ""
 						}
 					}
 				}
@@ -293,32 +294,38 @@ func parse(data []byte) (string, string) {
 					failure = "TOOL_FAILED"
 				}
 			default:
-				return "UNSUPPORTED_OUTPUT", session
+				return "UNSUPPORTED_OUTPUT", session, ""
 			}
 		default:
-			return "UNSUPPORTED_OUTPUT", session
+			return "UNSUPPORTED_OUTPUT", session, ""
 		}
 	}
 	if scanner.Err() != nil {
-		return "MALFORMED_OUTPUT", session
+		return "MALFORMED_OUTPUT", session, ""
 	}
 	if failure != "" {
-		return failure, session
+		return failure, session, ""
 	}
 	if phase != 3 || final == "" {
-		return "INCOMPLETE_OUTPUT", session
+		return "INCOMPLETE_OUTPUT", session, ""
 	}
 	status, valid := finalStatus(final)
 	if !valid || finals != 1 {
-		return "MALFORMED_OUTPUT", session
+		return "MALFORMED_OUTPUT", session, ""
+	}
+	var response struct {
+		Summary string `json:"summary"`
+	}
+	if json.Unmarshal([]byte(final), &response) != nil {
+		return "MALFORMED_OUTPUT", session, ""
 	}
 	switch status {
 	case "completed":
-		return "COMPLETED_UNVERIFIED", session
+		return "COMPLETED_UNVERIFIED", session, response.Summary
 	case "blocked":
-		return "SOFT_DENIED", session
+		return "SOFT_DENIED", session, response.Summary
 	default:
-		return "UNSUPPORTED_OUTPUT", session
+		return "UNSUPPORTED_OUTPUT", session, ""
 	}
 }
 

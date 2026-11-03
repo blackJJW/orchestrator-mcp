@@ -16,8 +16,9 @@ import (
 )
 
 // NativeActivation is a trusted host input, never a task property or CLI flag.
-// Qualify must measure sealed ChatGPT login, OS sandbox/network/cleanup and the
-// exact approved ResultDelivery transport. No implementation discovers credentials.
+// Qualify must measure sealed ChatGPT login and OS sandbox/network/cleanup.
+// The Notion path also requires its exact ResultDelivery transport; local storage does not.
+// No implementation discovers credentials.
 type NativeActivation struct {
 	Enabled                    bool
 	ApprovalRef, GrantIssuer   string
@@ -36,6 +37,7 @@ type NativeLaunch struct {
 	Native                                                                     NativeIdentity
 	Environment                                                                map[string]string
 	Deadline, ReadbackDeadline                                                 time.Time
+	LocalTask                                                                  *core.TaskSnapshot `json:",omitempty"`
 }
 
 func (p NativeLaunch) Digest() string {
@@ -54,6 +56,10 @@ type NativeQualification struct {
 type NativeBridge struct{ bridge *FixtureBridge }
 
 func NewNativeBridge(p BridgePlan, a NativeActivation) (*NativeBridge, error) {
+	return newNativeBridge(p, a, nil)
+}
+
+func newNativeBridge(p BridgePlan, a NativeActivation, localTask *core.TaskSnapshot) (*NativeBridge, error) {
 	if !a.Enabled || a.Qualify == nil || !hostReference(a.ApprovalRef) || !hostReference(a.GrantIssuer) {
 		return nil, ErrLivePending
 	}
@@ -62,7 +68,7 @@ func NewNativeBridge(p BridgePlan, a NativeActivation) (*NativeBridge, error) {
 		return nil, ErrPreflight
 	}
 	p.Executor = e // A fake executor can never supply the production runner.
-	b, err := newBridge(p, &a)
+	b, err := newBridge(p, &a, localTask)
 	if err != nil {
 		return nil, err
 	}
@@ -82,10 +88,15 @@ func hostReference(s string) bool {
 
 func (b *FixtureBridge) nativeLaunch() NativeLaunch {
 	p, a := b.plan, b.native
-	return NativeLaunch{ApprovalRef: a.ApprovalRef, GrantIssuer: a.GrantIssuer,
-		ControllerRoot: p.ControllerRoot, BirthToken: p.BirthToken, DeliveryTargetDigest: p.Delivery.BindingDigest(),
+	launch := NativeLaunch{ApprovalRef: a.ApprovalRef, GrantIssuer: a.GrantIssuer,
+		ControllerRoot: p.ControllerRoot, BirthToken: p.BirthToken, DeliveryTargetDigest: b.deliveryDigest(),
 		Contract: p.Preflight.Request.Contract, Grant: *p.Preflight.Request.Grant,
 		Source: p.Preflight.Source, Native: p.Preflight.Native, Environment: maps.Clone(p.Preflight.Environment), Deadline: a.Deadline, ReadbackDeadline: a.ReadbackDeadline}
+	if b.localTask != nil {
+		task := *b.localTask
+		launch.LocalTask = &task
+	}
+	return launch
 }
 
 // Repeated at construction, before intent, immediately before spawn and delivery.
@@ -133,7 +144,7 @@ func (b *FixtureBridge) checkNative(ctx context.Context, proof config.SourceProo
 	expected := launch.Digest()
 	q, err := a.Qualify(ctx, launch)
 	now = time.Now()
-	if err != nil || ctx.Err() != nil || !limit.After(now) || q.Binding != expected || !q.ResultDelivery ||
+	if err != nil || ctx.Err() != nil || !limit.After(now) || q.Binding != expected || (b.localTask == nil && !q.ResultDelivery) ||
 		(purpose == "spawn" && (q.AuthMethod != "chatgpt" || !q.Login || !q.ReadOnlySandbox || !q.NetworkDenied || !q.Cleanup)) ||
 		q.ObservedAt.IsZero() || q.ObservedAt.After(now) || now.Sub(q.ObservedAt) > time.Minute ||
 		!q.ValidUntil.After(now) || q.ValidUntil.Before(a.ReadbackDeadline) {
