@@ -271,6 +271,9 @@ func (r *bridgeRunner) Run(ctx context.Context, i Invocation) Process {
 		return Process{ExitCode: -1, Err: journal.ErrUnknown}
 	}
 	i.Environment = []string{"PATH=/usr/bin:/bin", "HOME=" + plan.Environment["HOME"], "CODEX_HOME=" + plan.Environment["CODEX_HOME"], "TMPDIR=" + plan.Environment["TMPDIR"]}
+	if r.bridge.native != nil {
+		i.Args = append([]string{"-c", `cli_auth_credentials_store="keyring"`}, i.Args...)
+	}
 	r.started = true
 	return r.inner.Run(ctx, i)
 }
