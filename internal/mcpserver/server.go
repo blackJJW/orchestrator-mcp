@@ -1,4 +1,4 @@
-// Package mcpserver exposes read-only scope and optional S2 source verification over MCP.
+// Package mcpserver exposes read-only scope, optional S2 verification and routing over MCP.
 package mcpserver
 
 import (
@@ -15,10 +15,18 @@ import (
 )
 
 // NewHandler loads the operator's one profile before accepting any client input.
-func NewHandler(profilePath, sourceSpecPath string) (http.Handler, error) {
+func NewHandler(profilePath, sourceSpecPath, routingPolicyPath string) (http.Handler, error) {
 	profile, err := config.Load(profilePath)
 	if err != nil {
 		return nil, err
+	}
+	var policy *config.RoutingPolicy
+	if routingPolicyPath != "" {
+		loaded, err := config.LoadRoutingPolicy(routingPolicyPath, profile.ProjectID)
+		if err != nil {
+			return nil, err
+		}
+		policy = &loaded
 	}
 	var binding *sourceBinding
 	if sourceSpecPath != "" {
@@ -37,6 +45,15 @@ func NewHandler(profilePath, sourceSpecPath string) (http.Handler, error) {
 		// Compare the canonical profile root directly; never resolve arbitrary client paths.
 		return nil, core.Plan(&profile, input), nil
 	})
+	if policy != nil {
+		mcp.AddTool(server, &mcp.Tool{
+			Name:        "plan_execution",
+			Description: "Suggest an executor/capability/reasoning route for an explicit task_type using fixed project policy. Missing or unmapped type needs context. Manual dispatch only; never grants authority, Grant, Claim or execution.",
+			Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true, OpenWorldHint: &closedWorld},
+		}, func(_ context.Context, _ *mcp.CallToolRequest, input core.ExecutionRequest) (*mcp.CallToolResult, core.RoutingDecision, error) {
+			return nil, core.PlanExecution(policy, input), nil
+		})
+	}
 	if binding != nil {
 		mcp.AddTool(server, &mcp.Tool{
 			Name:        "verify_source",

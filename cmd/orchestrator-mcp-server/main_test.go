@@ -145,3 +145,11 @@ func TestContainerListenRejectedOnHost(t *testing.T) {
 		t.Fatalf("container-only binding accepted on host: %v %s", err, output.String())
 	}
 }
+
+func TestInvalidRoutingPolicyStopsBeforeListen(t *testing.T) {
+	var output strings.Builder
+	err := run(context.Background(), []string{"-profile", "../../testdata/projects/alpha.json", "-routing-policy", "../../testdata/routing/beta.json", "-port", "0"}, &output)
+	if err == nil || output.Len() != 0 {
+		t.Fatalf("invalid routing policy opened a listener: %v %s", err, output.String())
+	}
+}

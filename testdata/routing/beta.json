@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "project_id": "beta",
+  "executors": [
+    {"id": "builder_pool", "supported_profiles": ["FAST"], "supported_reasoning": ["LOW"]}
+  ],
+  "routes": [
+    {"task_type": "IMPLEMENTATION", "executor_id": "builder_pool", "capability_profile": "FAST", "reasoning": "LOW"}
+  ]
+}

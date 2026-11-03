@@ -2,6 +2,7 @@
 
 MTT-690 implements the first MCP-first v6 surface. The subsequent `verify_source`
 slice exposes the existing S2 verifier without changing MTT-690's completed scope.
+The optional `plan_execution` slice adds project-owned routing suggestions only.
 The existing dry-run CLI and
 Native Controller are separate. PR #9 keyring work is not a prerequisite and is
 not included here.
@@ -31,7 +32,7 @@ Missing/invalid profiles fail startup. Profile changes require an operator resta
 
 ## Tool and result
 
-Without `-source-spec`, discovery exposes exactly one tool, `check_scope`, with read-only/closed-world
+With neither `-source-spec` nor `-routing-policy`, discovery exposes only `check_scope`, with read-only/closed-world
 annotations. It accepts exactly these required string fields:
 
 ```json
@@ -107,7 +108,7 @@ check, bounded to 15 seconds, before opening a listener. Invalid bindings or
 unverifiable startup source/evidence return only `SOURCE_UNPROVEN` and prevent
 startup. This reuses S2; it adds no approval gate or evidence producer.
 
-Successful startup adds `verify_source` as a second read-only/closed-world tool.
+Successful startup adds `verify_source` as a read-only/closed-world tool.
 Its only MCP argument is:
 
 ```json
@@ -149,6 +150,82 @@ not select a target, create inputs or convert old receipts to satisfy this examp
 This tool does not call `intake.Admit`, Claim, NativeBridge, Journal or a Notion
 writer. Source verification observes current applicability; it grants no execution,
 Claim, lifecycle acceptance, atomic filesystem snapshot or future immutability.
+
+## Optional `plan_execution`
+
+The operator may supply one additional JSON policy at startup. Existing
+`config.Profile` continues to own scope; it has no executor catalog or routing
+map, so its schema is unchanged. Omit `-routing-policy` to keep the existing tool
+surface. An invalid supplied policy prevents listening.
+
+```sh
+.local/bin/orchestrator-mcp-server -profile testdata/projects/alpha.json -routing-policy testdata/routing/alpha.json -port 0
+```
+
+Use the printed free loopback URL for a separate development server; do not
+restart or replace an already running Docker service to test this addition.
+For an invocation-only Codex connection, use the example below with that URL
+and `enabled_tools=["plan_execution"]`.
+
+The [inert alpha policy](../testdata/routing/alpha.json) has this exact shape:
+
+```json
+{
+  "schema_version": 1,
+  "project_id": "alpha",
+  "executors": [
+    {"id":"implementation_primary","supported_profiles":["BALANCED"],"supported_reasoning":["HIGH"]}
+  ],
+  "routes": [
+    {"task_type":"IMPLEMENTATION","executor_id":"implementation_primary","capability_profile":"BALANCED","reasoning":"HIGH"}
+  ]
+}
+```
+
+The file must be regular, non-symlink UTF-8 JSON of at most 64 KiB, opened
+nonblocking and read once. All shown keys are required and case-sensitive;
+unknown/duplicate keys, nulls, wrong types and trailing JSON are rejected,
+including nested objects. Project ID must match the fixed profile. Project,
+executor and task-type IDs are exact, nonempty strings of at most 128 bytes,
+without whitespace edges, control characters or wildcard patterns. Executors
+and routes must be nonempty, with unique executor IDs and task types.
+
+Capability vocabulary is `FAST`, `BALANCED`, `DEEP`, `REVIEW_DEEP`; reasoning is
+`LOW`, `MEDIUM`, `HIGH`, `EXTRA_HIGH`, from the existing generic design. Each
+executor declares nonempty, unique supported values, and every route must name
+a declared executor supporting its exact profile/reasoning. These are operator
+policy declarations, not measured runtime qualification or provider models.
+
+The sole client field is the optional string `task_type`. For example:
+
+```json
+{"task_type":"IMPLEMENTATION"}
+```
+
+```json
+{"project_id":"alpha","routing_allowed":true,"reason":"ROUTE_PLANNED","executor_id":"implementation_primary","capability_profile":"BALANCED","reasoning":"HIGH","manual_dispatch_required":true,"authority_granted":false,"execution_started":false}
+```
+
+The [inert beta policy](../testdata/routing/beta.json), with the beta profile,
+routes the same `IMPLEMENTATION` input to `builder_pool` / `FAST` / `LOW` using
+the same pure Core function. No provider/executor name is built into the Core.
+Policy files are not reloaded or selectable by clients. Extra fields such as
+executor, project, workspace, policy path or `execute` are SDK input errors.
+
+Missing/empty/`UNKNOWN` or unmapped task types return `routing_allowed=false`,
+`reason=NEEDS_CONTEXT` and no executor/profile/reasoning. The type is a caller
+supplied label, never inferred from objective text; supply a type mapped by the
+operator policy. A missing policy exposes no tool (`NO_ROUTING_POLICY` at the
+pure Core seam). An unsupported executor/profile/reasoning is rejected at
+startup and also denied by the Core with `EXECUTOR_UNSUPPORTED`.
+
+Every result requires manual dispatch and has `authority_granted=false` and
+`execution_started=false`. A suggestion is not task scope approval, a Grant,
+Claim, source verification, capacity/independence assessment or runtime launch.
+There is no fallback, override, handoff, digest/receipt or provider call in this
+slice. `check_scope`, optional `verify_source` and the dry-run CLI keep their
+existing contracts. This source addition does not update an existing image or
+running container; deploying it is a separate action.
 
 ## Codex CLI: invocation-only connection
 
@@ -264,7 +341,7 @@ path; `task_id=bootstrap-check` and `permission=source.read` remain the same.
 After `restart`, clients can reconnect using the same URL; restarting the service
 does not create a Task grant or dispatch.
 
-The default service omits `-source-spec`, so it exposes only `check_scope`.
+The default service omits both `-source-spec` and `-routing-policy`, so it exposes only `check_scope`.
 `verify_source` code and S2 trust rules remain unchanged. An operator may use it
 only with an already approved profile/Contract/SourceSpec/task base and complete
 standalone checkout, receipts and raw artifacts accessible read-only at their

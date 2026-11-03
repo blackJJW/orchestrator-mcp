@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "project_id": "alpha",
+  "executors": [
+    {"id": "implementation_primary", "supported_profiles": ["BALANCED"], "supported_reasoning": ["HIGH"]}
+  ],
+  "routes": [
+    {"task_type": "IMPLEMENTATION", "executor_id": "implementation_primary", "capability_profile": "BALANCED", "reasoning": "HIGH"}
+  ]
+}
