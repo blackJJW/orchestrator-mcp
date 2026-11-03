@@ -131,3 +131,17 @@ func TestInvalidSourceSpecStopsBeforeListen(t *testing.T) {
 		t.Fatalf("invalid source binding opened a listener: %v %s", err, output.String())
 	}
 }
+
+func TestContainerListenRejectedOnHost(t *testing.T) {
+	if _, err := os.Lstat("/.dockerenv"); err == nil {
+		t.Skip("running inside Docker; container listener is covered by Compose integration")
+	}
+	profile, err := filepath.Abs("../../testdata/projects/alpha.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output strings.Builder
+	if err := run(context.Background(), []string{"-profile", profile, "-container-listen", "-port", "0"}, &output); err == nil || output.Len() != 0 {
+		t.Fatalf("container-only binding accepted on host: %v %s", err, output.String())
+	}
+}

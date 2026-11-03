@@ -20,8 +20,9 @@ make check
 
 The foreground server prints `MCP endpoint: http://127.0.0.1:8080/mcp` to stderr.
 Connect a local MCP client using that Streamable HTTP URL. `-port 0` selects a free
-loopback port and prints its actual URL. There is no bind-address option;
-`0.0.0.0`, LAN addresses and remote deployment are not supported. Ctrl-C/SIGTERM
+loopback port and prints its actual URL. Direct execution stays fixed to loopback;
+only the explicit Docker mode below listens on `0.0.0.0` inside the container.
+LAN addresses and remote deployment are not supported. Ctrl-C/SIGTERM
 shuts the server down. Tests close their own listeners; no daemon is installed.
 
 The operator must supply one explicit JSON profile. `config.Load` validates it
@@ -214,10 +215,73 @@ alone, use `-port 0`, and substitute the printed URL in the invocation options.
 See official [one-off configuration](https://learn.chatgpt.com/docs/config-file/config-advanced)
 and [CLI options](https://learn.chatgpt.com/docs/cli/reference).
 
+## Docker Compose (local only)
+
+One multi-stage Dockerfile builds only the existing MCP server with Go 1.27.0
+and the unchanged locked modules/SDK 1.8.0. The runtime contains that binary and
+Debian's Git package/dependencies for S2's fixed `/usr/bin/git`; no Codex,
+supervisor, Docker socket or host credentials are included. The build context is
+allowlisted by `.dockerignore`, excluding `.git`, `.local`, tests and unrelated adapters.
+
+The Compose service uses UID/GID 65532, a read-only root filesystem, no Linux
+capabilities, no-new-privileges and only two explicit read-only bind mounts: the
+public alpha profile and its workspace. Missing bind sources are not created.
+The profile's relative workspace resolves to `/workspaces/alpha` inside the image.
+It is a scope-check demo, not an approved real S2 target.
+
+Docker Desktop must already be running. These commands use its existing local
+`desktop-linux` context without changing the global context or Desktop settings:
+
+```sh
+docker --context desktop-linux compose up -d --build
+docker --context desktop-linux compose ps
+docker --context desktop-linux compose logs --tail 50 mcp
+docker --context desktop-linux compose restart mcp
+docker --context desktop-linux compose stop mcp
+docker --context desktop-linux compose down
+```
+
+Use a separate `-p` project name consistently for an isolated trial. `restart:
+unless-stopped` applies while Docker Desktop/Engine is running; it cannot start
+Desktop itself. `stop` sends SIGTERM with a 10-second grace period for the
+server's bounded shutdown. `down` removes this project's container and network;
+neither command removes bind-mounted source. Test services must be stopped and
+removed when the trial ends; packaging is not approval for ongoing deployment.
+
+The service passes `-container-listen`, which requires Docker's regular
+`/.dockerenv` marker and changes only the listener to IPv4 `0.0.0.0:8080`. This
+marker is an accidental-use guard, not execution or host-trust authority. The
+published port is **`127.0.0.1:8080:8080`**, never a LAN/wildcard host bind. Clients
+use **`http://127.0.0.1:8080/mcp`**, not the internal `0.0.0.0` log address. Do not
+enable host networking, privileged mode, a proxy or a tunnel. If host port 8080
+is occupied, stop this trial rather than terminating another process or widening
+the bind. No arbitrary listen-address flag is provided.
+
+Reuse the Codex invocation-only example above with the same URL. For this Compose
+demo set `orchestrator_workspace=/workspaces/alpha` instead of the host checkout
+path; `task_id=bootstrap-check` and `permission=source.read` remain the same.
+`unapproved` remains denied and all Decisions have `execution_started=false`.
+After `restart`, clients can reconnect using the same URL; restarting the service
+does not create a Task grant or dispatch.
+
+The default service omits `-source-spec`, so it exposes only `check_scope`.
+`verify_source` code and S2 trust rules remain unchanged. An operator may use it
+only with an already approved profile/Contract/SourceSpec/task base and complete
+standalone checkout, receipts and raw artifacts accessible read-only at their
+**original canonical paths** inside the container. The runtime UID must already
+have sufficient access and Git ownership eligibility. A host binding is not
+automatically portable to a renamed container path. Do not rewrite paths,
+SHA/pins/receipts, change host permissions, copy credentials or weaken Git safety
+to make it pass. Git availability alone does not establish target applicability.
+Real-target readiness stays **APPROVED_TARGET_NOT_READY** and SourceProof
+eligibility **UNVERIFIED**; no real-target S2 check is required for this packaging slice.
+
 ## HTTP and authority boundary
 
-- The listener is fixed to IPv4 `127.0.0.1`. The SDK's default localhost Host
-  protection stays enabled. Forwarded headers do not grant a remote bind.
+- Direct execution listens on IPv4 `127.0.0.1`. Docker mode uses the container
+  interface with host-loopback-only publication. The SDK's default localhost Host
+  protection stays enabled, with the same loopback Host policy also enforced for
+  container NAT destinations. Forwarded headers do not grant a remote bind.
 - Go's `http.CrossOriginProtection` checks Origin and fetch metadata. Explicit
   Origin is checked on all MCP methods, including GET. Same-origin requests and
   local native clients without Origin are permitted; cross-origin requests get 403.

@@ -1,0 +1,25 @@
+name: orchestrator-mcp
+services:
+  mcp:
+    build: .
+    command: ["-container-listen", "-profile", "/config/alpha.json", "-port", "8080"]
+    ports:
+      - "127.0.0.1:8080:8080"
+    restart: unless-stopped
+    stop_grace_period: 10s
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - type: bind
+        source: ./testdata/projects/alpha.json
+        target: /config/alpha.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./testdata/workspaces/alpha
+        target: /workspaces/alpha
+        read_only: true
+        bind:
+          create_host_path: false
