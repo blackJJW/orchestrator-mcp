@@ -2,7 +2,8 @@
 
 A native Go CLI that compares an explicit project profile with a request in dry-run mode. The bootstrap, Notion admission and Codex adapters retain their independently reviewed behavior. The S2 candidate adds a read-only Git/source/brief/receipt verifier behind the existing admission interface; the CLI remains dry-run only.
 
-The separate read-only MCP entrypoint serves one `check_scope` tool at
+The separate read-only MCP entrypoint serves `check_scope` and, only with an explicit
+operator-owned S2 binding, `verify_source` at
 `http://127.0.0.1:8080/mcp`, using the official Go MCP SDK and the same Core/Config.
 See [MCP startup, connection and security](docs/MCP.md). It does not dispatch work.
 

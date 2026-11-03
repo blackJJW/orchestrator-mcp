@@ -30,6 +30,7 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	flags := flag.NewFlagSet("orchestrator-mcp-server", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	profile := flags.String("profile", "", "operator-selected JSON profile (required)")
+	sourceSpec := flags.String("source-spec", "", "operator-selected fixed S2 binding JSON (optional)")
 	port := flags.Int("port", 8080, "127.0.0.1 TCP port; 0 selects a free local port")
 	if err := flags.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -40,7 +41,7 @@ func run(ctx context.Context, args []string, stderr io.Writer) error {
 	if flags.NArg() != 0 || *profile == "" || *port < 0 || *port > 65535 {
 		return errors.New("an explicit -profile and port 0..65535 are required; positional arguments are unsupported")
 	}
-	handler, err := mcpserver.NewHandler(*profile)
+	handler, err := mcpserver.NewHandler(*profile, *sourceSpec)
 	if err != nil {
 		return err
 	}
