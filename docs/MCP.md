@@ -375,6 +375,27 @@ eligibility **UNVERIFIED**; no real-target S2 check is required for this packagi
 Remote ChatGPT services cannot reach a host's loopback URL. Remote exposure and
 authentication are outside this MVP; do not create a tunnel to make a test pass.
 
+## Tool-call logging
+
+Completed SDK `tools/call` handling emits one JSON record to process stderr using
+standard `log/slog`: UTC `time`, fixed `tool`, `status`, stable `reason`, and
+`duration_ms`, plus the standard level/message fields. Status is `success`,
+`denied`, `needs_context` or `error`. SDK/protocol errors use `TOOL_CALL_ERROR`;
+unrecognized tool names are logged as `unknown`. Discovery and HTTP requests
+rejected before SDK Tool handling are not call logs. Existing responses are unchanged.
+`success` means a read-only decision completed, never Task execution or a Grant.
+
+```json
+{"time":"2026-11-04T02:30:00Z","level":"INFO","msg":"mcp_tool_call","tool":"plan_execution","status":"success","reason":"ROUTE_PLANNED","duration_ms":0.25}
+```
+
+Use the same Compose file combination as the running service with
+`docker --context desktop-linux compose ... logs --tail 50 mcp`. A source-only
+change does not update a running image; deployment requires separate approval.
+No request/response bodies, task inputs, headers/tokens, paths, source proofs,
+raw errors or inferred agent identities are logged. There is no file/DB sink,
+rotation service, new flag or runtime configuration; Native Journal is independent.
+
 ## Evidence and limits
 
 The new tests use the official SDK Client against real localhost HTTP listeners,
