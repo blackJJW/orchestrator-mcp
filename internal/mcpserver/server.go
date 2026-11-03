@@ -3,10 +3,15 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -16,6 +21,10 @@ import (
 
 // NewHandler loads the operator's one profile before accepting any client input.
 func NewHandler(profilePath, sourceSpecPath, routingPolicyPath string) (http.Handler, error) {
+	return newHandler(profilePath, sourceSpecPath, routingPolicyPath, os.Stderr)
+}
+
+func newHandler(profilePath, sourceSpecPath, routingPolicyPath string, logOutput io.Writer) (http.Handler, error) {
 	profile, err := config.Load(profilePath)
 	if err != nil {
 		return nil, err
@@ -63,6 +72,50 @@ func NewHandler(profilePath, sourceSpecPath, routingPolicyPath string) (http.Han
 			return nil, verifySource(ctx, profile, *binding, input.TaskID), nil
 		})
 	}
+	logger := slog.New(slog.NewJSONHandler(logOutput, &slog.HandlerOptions{
+		ReplaceAttr: func(_ []string, attr slog.Attr) slog.Attr {
+			if attr.Key == slog.TimeKey {
+				attr.Value = slog.TimeValue(attr.Value.Time().UTC())
+			}
+			return attr
+		},
+	}))
+	server.AddReceivingMiddleware(func(next mcp.MethodHandler) mcp.MethodHandler {
+		return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+			if method != "tools/call" {
+				return next(ctx, method, req)
+			}
+			started := time.Now()
+			result, err := next(ctx, method, req)
+			tool, status, reason := "unknown", "error", "TOOL_CALL_ERROR"
+			if params, ok := req.GetParams().(*mcp.CallToolParamsRaw); ok {
+				switch params.Name {
+				case "check_scope", "plan_execution", "verify_source":
+					tool = params.Name
+				}
+			}
+			if call, ok := result.(*mcp.CallToolResult); err == nil && ok && !call.IsError {
+				var decision struct {
+					Reason string `json:"reason"`
+				}
+				if raw, ok := call.StructuredContent.(json.RawMessage); ok && json.Unmarshal(raw, &decision) == nil {
+					// Only fixed result codes are loggable; never copy input or error text.
+					switch decision.Reason {
+					case "DRY_RUN_ONLY", "ROUTE_PLANNED", "SOURCE_VERIFIED":
+						status, reason = "success", decision.Reason
+					case "NEEDS_CONTEXT":
+						status, reason = "needs_context", decision.Reason
+					case "NO_PROFILE", "REQUEST_REQUIRED", "TASK_NOT_ALLOWLISTED", "WORKSPACE_SCOPE_MISMATCH", "PERMISSION_NOT_GRANTED",
+						"NO_ROUTING_POLICY", "EXECUTOR_UNSUPPORTED", "SOURCE_UNPROVEN", "SOURCE_INCOMPATIBLE":
+						status, reason = "denied", decision.Reason
+					}
+				}
+			}
+			logger.InfoContext(ctx, "mcp_tool_call", "tool", tool, "status", status, "reason", reason,
+				"duration_ms", time.Since(started).Seconds()*1000)
+			return result, err
+		}
+	})
 	transport := mcp.NewStreamableHTTPHandler(func(*http.Request) *mcp.Server { return server }, &mcp.StreamableHTTPOptions{
 		Stateless: true, JSONResponse: true, MaxRequestBodyBytes: 64 << 10,
 	})
