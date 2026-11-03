@@ -35,6 +35,7 @@ type Identity struct {
 	Proof                config.SourceProof
 	Deadline             time.Time
 	DeliveryTargetDigest string `json:"DeliveryTargetDigest,omitempty"`
+	ExecutionDigest      string `json:"ExecutionDigest,omitempty"`
 }
 
 // ProcessEvidence is a provider-neutral model observation, not OS provenance.
@@ -218,7 +219,7 @@ func (f *Fixture) FindFixture(id Identity, now time.Time) (Record, bool, error) 
 		if r.Identity.Claim.Binding.TaskID != id.Claim.Binding.TaskID || r.Identity.Claim.Binding.RunID != id.Claim.Binding.RunID {
 			continue
 		}
-		if r.Identity.Contract != id.Contract || r.Identity.Claim.Binding != id.Claim.Binding || r.Identity.DeliveryTargetDigest != id.DeliveryTargetDigest ||
+		if r.Identity.Contract != id.Contract || r.Identity.Claim.Binding != id.Claim.Binding || r.Identity.DeliveryTargetDigest != id.DeliveryTargetDigest || r.Identity.ExecutionDigest != id.ExecutionDigest ||
 			r.Identity.Claim.Owner != id.Claim.Owner || r.Identity.Claim.Nonce != id.Claim.Nonce ||
 			!r.Identity.Claim.LeaseUntil.Equal(id.Claim.LeaseUntil) {
 			return Record{}, true, ErrIdentity
@@ -335,7 +336,7 @@ func (f *Fixture) identity(id Identity, now time.Time) error {
 		!id.Claim.Consumed || id.Claim.Fence == 0 || id.Claim.Nonce == "" ||
 		now.IsZero() || !id.Claim.LeaseUntil.After(now) || id.Deadline.IsZero() || id.Deadline.After(id.Claim.LeaseUntil) ||
 		id.Deadline.After(now.Add(5*time.Minute)) ||
-		(f.disk.StorageRoot != "" && !hash(id.DeliveryTargetDigest)) || (id.DeliveryTargetDigest != "" && !hash(id.DeliveryTargetDigest)) {
+		(f.disk.StorageRoot != "" && !hash(id.DeliveryTargetDigest)) || (id.DeliveryTargetDigest != "" && !hash(id.DeliveryTargetDigest)) || (id.ExecutionDigest != "" && !hash(id.ExecutionDigest)) {
 		return ErrIdentity
 	}
 	return nil
@@ -352,7 +353,7 @@ func (f *Fixture) current(id Identity, now time.Time) (Record, error) {
 		r := f.disk.Records[i]
 		b := r.Identity.Claim.Binding
 		if b.TaskID == id.Claim.Binding.TaskID && b.RunID == id.Claim.Binding.RunID {
-			if r.Identity.Contract != id.Contract || r.Identity.DeliveryTargetDigest != id.DeliveryTargetDigest ||
+			if r.Identity.Contract != id.Contract || r.Identity.DeliveryTargetDigest != id.DeliveryTargetDigest || r.Identity.ExecutionDigest != id.ExecutionDigest ||
 				!sameClaim(r.Identity.Claim, id.Claim) || !r.Identity.Deadline.Equal(id.Deadline) {
 				return Record{}, ErrIdentity
 			}
@@ -511,7 +512,7 @@ func (f *Fixture) decode(data []byte) error {
 		if err != nil || schemaErr != nil || b != id.Claim.Binding || r.Provider != "codex" || r.Sequence != uint64(i+1) ||
 			!id.Claim.Consumed || id.Claim.Owner != b.Owner || id.Claim.Fence == 0 || id.Claim.Nonce == "" ||
 			id.Deadline.IsZero() || id.Deadline.After(id.Claim.LeaseUntil) ||
-			(disk.StorageRoot != "" && !hash(id.DeliveryTargetDigest)) || (id.DeliveryTargetDigest != "" && !hash(id.DeliveryTargetDigest)) {
+			(disk.StorageRoot != "" && !hash(id.DeliveryTargetDigest)) || (id.DeliveryTargetDigest != "" && !hash(id.DeliveryTargetDigest)) || (id.ExecutionDigest != "" && !hash(id.ExecutionDigest)) {
 			return ErrUnknown
 		}
 		key := b.TaskID + "\x00" + b.RunID

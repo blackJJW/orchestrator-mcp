@@ -21,7 +21,7 @@ func TestFinalResponseStringTypes(t *testing.T) {
 					t.Fatalf("non-string accepted: status=%q value=%s", status, data)
 				}
 				output := []byte(streamPrefix + message(string(data)) + streamEnd)
-				if got, _ := parse(output); got != "MALFORMED_OUTPUT" {
+				if got, _, _ := parse(output); got != "MALFORMED_OUTPUT" {
 					t.Fatalf("non-string stream: %s", got)
 				}
 				r, _ := request(t)
@@ -48,7 +48,7 @@ func TestFinalResponseStringTypes(t *testing.T) {
 				t.Fatalf("valid string rejected: status=%q valid=%v", got, valid)
 			}
 			output := []byte(streamPrefix + message("checking") + message(tc.text) + streamEnd)
-			if got, _ := parse(output); got != tc.outcome {
+			if got, _, _ := parse(output); got != tc.outcome {
 				t.Fatalf("valid string stream: %s", got)
 			}
 			r, _ := request(t)
