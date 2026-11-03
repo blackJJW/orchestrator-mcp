@@ -1,16 +1,21 @@
-# Orchestrator local controller
+# Orchestrator MCP scope server and local controller
 
 A native Go CLI that compares an explicit project profile with a request in dry-run mode. The bootstrap, Notion admission and Codex adapters retain their independently reviewed behavior. The S2 candidate adds a read-only Git/source/brief/receipt verifier behind the existing admission interface; the CLI remains dry-run only.
+
+The separate read-only MCP entrypoint serves one `check_scope` tool at
+`http://127.0.0.1:8080/mcp`, using the official Go MCP SDK and the same Core/Config.
+See [MCP startup, connection and security](docs/MCP.md). It does not dispatch work.
 
 ## Build and validation
 
 Use an installed Go 1.27 or later and `make`:
 
 ```sh
+make deps
 make check
 ```
 
-The canonical check runs formatting checks, tests, vet and a native build. It uses only the standard library. Automatic toolchain installation and module downloads are disabled. Build output, caches, temporary files and validation telemetry stay in `.local/`; global telemetry settings are unchanged.
+`make deps` explicitly fetches the pinned official MCP SDK and its required dependencies into `.local/`. The canonical check runs formatting checks, tests, vet and both native builds with module downloads and automatic toolchain installation disabled. Build output, caches, temporary files and validation telemetry stay in `.local/`; global telemetry settings are unchanged.
 
 ## CLI
 
@@ -43,7 +48,7 @@ A denied scope still returns exit 0 with its reason. Invalid profiles, missing w
 }
 ```
 
-- A supported schema, exact project ID and existing workspace directory are required. Relative profile roots are resolved from the profile file's directory; request paths are resolved from the caller's directory.
+- A supported schema, exact project ID and existing workspace directory are required. Relative profile roots are resolved from the profile file's directory; CLI request paths are resolved from the caller's directory. MCP requests must use the exact canonical profile workspace and do not trigger filesystem path resolution.
 - Normalized real workspace paths must match exactly. Parent, child, sibling and filesystem roots do not gain access.
 - Tasks and permissions use exact, case-sensitive values. Wildcards, duplicates, blank values and control characters are rejected. Missing, null or empty allowlists grant nothing.
 - The loader accepts one UTF-8 JSON object up to 64 KiB. Unknown or case-alias fields, duplicate keys, wrong types and trailing data are rejected. Profiles must not contain credentials.
@@ -53,7 +58,7 @@ The two fixture profiles point only to inert workspaces owned by this repository
 
 ## Boundaries and source control
 
-`internal/config` owns profile/source filesystem validation; `internal/core` returns synchronous pure decisions; `cmd/orchestrator-mcp` handles CLI and JSON I/O. The journal adapter owns fixture-only persistence. The Notion adapter makes bounded, fixed-host GET requests only when a caller supplies a token; it never reads credential files and its claim method always refuses writes. The Codex adapter requires a separate host-issued read-only launch grant; fixtures execute only the test binary. The CLI does not invoke these adapters. There is no daemon, Docker package or MCP server. Workspace comparison is a dry-run check, not a runtime sandbox.
+`internal/config` owns profile/source filesystem validation; `internal/core` returns synchronous pure decisions; `cmd/orchestrator-mcp` handles CLI and JSON I/O. The journal adapter owns fixture-only persistence. The Notion adapter makes bounded, fixed-host GET requests only when a caller supplies a token; it never reads credential files and its claim method always refuses writes. The Codex adapter requires a separate host-issued read-only launch grant; fixtures execute only the test binary. The CLI does not invoke these adapters. The MCP server imports only Core/Config and the SDK, without any Native/Notion/Journal adapter. There is no daemon or Docker package. Workspace comparison is a dry-run check, not a runtime sandbox.
 
 The initial `main` used the independently accepted bootstrap source, followed by the reviewed Notion and Codex integrations. S1/S2/S3 source and fixture contracts are integrated; live qualification remains separate. Later implementation candidates require separate branches and independent review before integration. Existing public history is preserved; this candidate does not repair earlier merge metadata.
 

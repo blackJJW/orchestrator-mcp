@@ -4,10 +4,11 @@
 - 이 프로젝트는 독립 Go 제어기다. 다른 프로젝트의 코드·설정·Git·런타임·인증을 변경하지 않는다.
 - 명시적 사용자 요청과 task 범위만 권한 근거다. Notion 상태, 프로필, 설치된 도구는 새 권한을 발급하지 않는다.
 - 정책은 `internal/core`의 동기식 순수 함수로 유지한다. 파일 확인은 `internal/config`, CLI는 `cmd/orchestrator-mcp`가 담당한다.
-- CLI는 dry-run 전용이다. 사용자 승인 MTT-572/573 및 MTT-574 범위에서만 reader/executor adapter와 검증을 구현한다. MTT-574 Native 활성화 후보는 기본 비활성이며 별도 trusted host 승인·Grant·실측 인증/격리/cleanup·정확한 결과 대상 적격성 없이는 거부한다. 코드/Git 승인은 실제 Provider 실행이나 Notion 결과 쓰기 권한이 아니다. Reader의 고정 HTTPS GET은 별도 access 권한과 caller가 제공한 token을 요구하며, 실제 claim·task launch는 별도 권한 없이는 거부한다. 인증 파일 접근, daemon, Docker/MCP 서비스, 범용 shell 기능을 추가하지 않는다.
+- CLI는 dry-run 전용이다. 사용자 승인 MTT-572/573 및 MTT-574 범위에서만 reader/executor adapter와 검증을 구현한다. MTT-574 Native 활성화 후보는 기본 비활성이며 별도 trusted host 승인·Grant·실측 인증/격리/cleanup·정확한 결과 대상 적격성 없이는 거부한다. 코드/Git 승인은 실제 Provider 실행이나 Notion 결과 쓰기 권한이 아니다. Reader의 고정 HTTPS GET은 별도 access 권한과 caller가 제공한 token을 요구하며, 실제 claim·task launch는 별도 권한 없이는 거부한다. 인증 파일 접근, daemon, Docker 서비스, 범용 shell 기능을 추가하지 않는다.
+- 사용자 승인 MTT-690 MCP-first v6만 예외로, 별도 수동 진입점의 127.0.0.1 Streamable HTTP `/mcp`와 고정 profile 기반 read-only `check_scope` 한 개를 제공한다. 공식 Go MCP SDK를 사용하고 Core/Config 및 기존 CLI/Native 구현을 보존한다. Provider/Notion/runtime authority, 인증 변경, 원격 공개·배포 권한은 없다. 그 밖의 MCP 서비스는 별도 승인 없이는 추가하지 않는다.
 - MTT-574 로컬 단회 경로는 명시적 host-approved TaskSnapshot과 같은 Native 승인·Grant·격리 경계를 사용하며 Notion Reader/Delivery를 받지 않는다. 로컬 RESULT_DURABLE 저장·조회는 Notion SYNC_CONFIRMED 또는 Task DONE이 아니다.
 - 프로필 없음, 불완전한 요청, 허용 목록 밖 task/권한, 다른 workspace는 기본 거부한다. consumer 이름이나 lifecycle을 core에 넣지 않는다.
-- 표준 라이브러리를 먼저 사용한다. 변경에 필요한 호출부·fixture·테스트·문서를 함께 수정한다.
+- 표준 라이브러리를 먼저 사용한다. MTT-690에 한해 고정 공식 Go MCP SDK와 필수 간접 의존성을 task-local cache로 취득한다. 변경에 필요한 호출부·fixture·테스트·문서를 함께 수정한다.
 - 최종 검증은 `make check`다. task 고유 증거는 native CLI dry-run으로 보완한다. concurrency가 생기면 race 검증을 추가한다.
 - 검증 산출물과 임시 파일은 `.local/`에 둔다. 전역 설치·설정 변경과 외부 의존성 다운로드를 하지 않는다.
 - Git 초기화/branch/commit/push/PR, 실제 task launch, 외부 연결은 별도 권한이 필요하다. 이를 완료한 것처럼 보고하지 않는다.
